@@ -11,11 +11,15 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
+add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
+target_include_directories(ffmpeg_encoder PUBLIC src/lib-ffmpeg_enc_dec)
+
 add_executable(encoder_node src/encoder_node.cpp)
 target_include_directories(encoder_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(encoder_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_link_libraries(encoder_node ffmpeg_encoder)
 
 install(TARGETS encoder_node
   DESTINATION lib/${PROJECT_NAME})
