@@ -11,8 +11,41 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
+
+set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
+set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
+set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
+
+# FFmpeg libraries
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_library(AVCODEC_LIBRARY NAMES avcodec
+            HINTS
+            ${PC_AVCODEC_LIBDIR}
+            )
+
+    if(NOT AVCODEC_LIBRARY )
+      message(FATAL_ERROR "avcodec library not found")
+    endif()
+    find_library(AVFORMAT_LIBRARY NAMES avformat
+            HINTS
+            ${PC_AVFORMAT_LIBDIR}
+            )
+    find_library(AVUTIL_LIBRARY NAMES avutil
+            HINTS
+            ${PC_AVUTIL_LIBDIR}
+            )
+endif()
+
 add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
-target_include_directories(ffmpeg_encoder PUBLIC src/lib-ffmpeg_enc_dec)
+target_include_directories(ffmpeg_encoder PUBLIC include)
+
+add_executable(round_trip_test src/round_trip_test.cpp)
+target_link_libraries(round_trip_test
+  ${AVCODEC_LIBRARY}
+  ${AVFORMAT_LIBRARY}
+  ${AVUTIL_LIBRARY}
+)
+
 
 add_executable(encoder_node src/encoder_node.cpp)
 target_include_directories(encoder_node PUBLIC
