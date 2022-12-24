@@ -42,8 +42,12 @@ int main(int argc, char **argv) {
   std::filesystem::path image_dir = boost_args["image_dir"].as<std::string>();
   std::vector<std::filesystem::path> image_paths;
 
+  int max_num_images = 10;
   for (const auto &entry : std::filesystem::directory_iterator(image_dir)) {
     image_paths.push_back(entry.path());
+    if (image_paths.size() >= 10) {
+      break;
+    }
   }
   std::sort(image_paths.begin(), image_paths.end());
   for (const auto &path : image_paths) {
@@ -123,10 +127,17 @@ int main(int argc, char **argv) {
 
   for (const auto &path : image_paths) {
     cv::Mat img = imread(path, cv::IMREAD_COLOR);
+    if (img.size().width != encoder_context->width ||
+        img.size().height != encoder_context->height) {
+      std::cout << "Incorrect encoder image size" << std::endl;
+    }
     if (img.empty()) {
       std::cout << "Could not read the image: " << path << std::endl;
       return 1;
     }
+
+    ret = av_frame_make_writable(frame);
+    if (ret < 0) exit(1);
   }
 
   /*
