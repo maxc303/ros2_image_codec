@@ -11,7 +11,6 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-
 set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
@@ -39,8 +38,14 @@ endif()
 add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
 target_include_directories(ffmpeg_encoder PUBLIC include)
 
+
+find_package(Boost COMPONENTS program_options REQUIRED)
+find_package(OpenCV REQUIRED)
+
 add_executable(round_trip_test src/round_trip_test.cpp)
 target_link_libraries(round_trip_test
+  ${OpenCV_LIBRARIES}
+  ${Boost_LIBRARIES}
   ${AVCODEC_LIBRARY}
   ${AVFORMAT_LIBRARY}
   ${AVUTIL_LIBRARY}

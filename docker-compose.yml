@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  image_enc_dec_project:
+    build: .
+    container_name: image_enc_dec_env
+    working_dir: /home/workspace
+    tty: true
+    volumes:
+      - ./image_enc_dec:/home/workspace/image_enc_dec
+      - ./test_images:/home/workspace/test_images
+    deploy:
+      resources:
+        reservations:
+          devices:
+              # Enable nvidia-driver
+              # add "video" to capabilities to enable nvenc/nvdec libnvidia-encode.so
+              - driver: nvidia
+                count: 1
+                capabilities: [gpu, video]
+    
