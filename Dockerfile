@@ -26,3 +26,6 @@ RUN git clone https://github.com/catchorg/Catch2.git && \
     cd Catch2 && \
     cmake -Bbuild -H. -DBUILD_TESTING=OFF && \
     sudo cmake --build build/ --target install
+
+# source ros setup script to .bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc

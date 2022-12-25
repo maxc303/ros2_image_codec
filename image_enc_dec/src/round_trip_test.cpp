@@ -9,7 +9,7 @@ extern "C" {
 #include <boost/program_options.hpp>
 #include <filesystem>
 #include <iostream>
-#include <opencv2/opencv.hpp>
+#include <opencv4/opencv2/opencv.hpp>
 #include <string>
 
 #ifdef av_err2str
@@ -21,6 +21,32 @@ av_always_inline std::string av_err2string(int errnum) {
 }
 #define av_err2str(err) av_err2string(err).c_str()
 #endif  // av_err2str
+
+static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
+  int ret;
+
+  /* send the frame to the encoder */
+  if (frame) printf("Send frame %3" PRId64 "\n", frame->pts);
+
+  ret = avcodec_send_frame(enc_ctx, frame);
+  if (ret < 0) {
+    fprintf(stderr, "Error sending a frame for encoding\n");
+    exit(1);
+  }
+
+  while (ret >= 0) {
+    ret = avcodec_receive_packet(enc_ctx, pkt);
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+      return;
+    else if (ret < 0) {
+      fprintf(stderr, "Error during encoding\n");
+      exit(1);
+    }
+
+    printf("Write packet %3" PRId64 " (size=%5d)\n", pkt->pts, pkt->size);
+    av_packet_unref(pkt);
+  }
+}
 
 namespace po = boost::program_options;
 int main(int argc, char **argv) {
@@ -125,6 +151,11 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  /*
+
+  Main Image Encoding loop
+  */
+  int frame_idx = 0;
   for (const auto &path : image_paths) {
     cv::Mat img = imread(path, cv::IMREAD_COLOR);
     if (img.size().width != encoder_context->width ||
@@ -138,7 +169,25 @@ int main(int argc, char **argv) {
 
     ret = av_frame_make_writable(frame);
     if (ret < 0) exit(1);
+
+    // Copy frame data from bgr channel
+    cv::Mat ch1, ch2, ch3;
+    std::vector<cv::Mat> channels(3);
+    cv::split(img, channels);
+
+    int ch_size = img.size().width * img.size().height;
+    std::memcpy(frame->data[0], channels[0].data, ch_size * 3);
+    // std::memcpy(frame->data[1], channels[1].data, ch_size);
+    // std::memcpy(frame->data[2], channels[2].data, ch_size);
+
+    // timestamp = index * timebase
+    frame->pts = frame_idx;
+    frame_idx++;
+
+    // encode
+    encode(encoder_context, frame, pkt);
   }
+  encode(encoder_context, NULL, pkt);
 
   /*
   Free resources
