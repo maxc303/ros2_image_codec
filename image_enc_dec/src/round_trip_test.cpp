@@ -36,7 +36,10 @@ static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
 
   while (ret >= 0) {
     ret = avcodec_receive_packet(enc_ctx, pkt);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+    std::cout << "Return code: " << ret << std::endl;
+    if (ret == AVERROR(EAGAIN)) {
+      return;
+    } else if (ret == AVERROR_EOF)
       return;
     else if (ret < 0) {
       fprintf(stderr, "Error during encoding\n");
@@ -118,16 +121,26 @@ int main(int argc, char **argv) {
   /* frames per second */
   encoder_context->time_base = (AVRational){1, 10};
   encoder_context->framerate = (AVRational){10, 1};
-
   /* emit one intra frame every ten frames
    * check frame pict_type before passing frame
    * to encoder, if frame->pict_type is AV_PICTURE_TYPE_I
    * then gop_size is ignored and the output of encoder
    * will always be I frame irrespective to gop_size
    */
-  encoder_context->gop_size = 10;
-  encoder_context->max_b_frames = 1;
+  encoder_context->gop_size = 5;
+  encoder_context->max_b_frames = 0;
   encoder_context->pix_fmt = AV_PIX_FMT_BGR0;
+  encoder_context->thread_count = 0;
+
+  // Extra settings to enable frame can be retrievd without waiting for more
+  // frames.
+  // Use ffmpeg -h encoder={encoder-name} to list the options
+  if (encoder_name == "h264_nvenc") {
+    av_opt_set(encoder_context->priv_data, "zerolatency", "1", 0);
+    av_opt_set(encoder_context->priv_data, "delay", "0", 0);
+  } else if (encoder_name == "libx264rgb") {
+    av_opt_set(encoder_context->priv_data, "tune", "zerolatency", 0);
+  }
 
   int ret;
   ret = avcodec_open2(encoder_context, encoder, NULL);
@@ -182,6 +195,8 @@ int main(int argc, char **argv) {
 
     // timestamp = index * timebase
     frame->pts = frame_idx;
+    frame->pict_type = AV_PICTURE_TYPE_I;
+    frame->key_frame = 1;
     frame_idx++;
 
     // encode
