@@ -33,7 +33,6 @@ static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
     fprintf(stderr, "Error sending a frame for encoding\n");
     exit(1);
   }
-
   while (ret >= 0) {
     ret = avcodec_receive_packet(enc_ctx, pkt);
 
@@ -61,11 +60,14 @@ static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
             av_err2str(ret));
     exit(1);
   }
+  std::cout << "Sent a packet" << std::endl;
 
-  while (ret >= 0) {
+  while (ret >= 0 || ret == AVERROR(EAGAIN)) {
     ret = avcodec_receive_frame(dec_ctx, frame);
-    std::cout << "Return code " << av_err2str(ret) << std::endl;
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+    std::cout << "Return code :" << ret << "=" << av_err2str(ret) << std::endl;
+    if (ret == AVERROR(EAGAIN)) {
+      return;
+    } else if (ret == AVERROR_EOF)
       return;
     else if (ret < 0) {
       fprintf(stderr, "Error during decoding\n");
@@ -97,10 +99,10 @@ int main(int argc, char **argv) {
   std::filesystem::path image_dir = boost_args["image_dir"].as<std::string>();
   std::vector<std::filesystem::path> image_paths;
 
-  int max_num_images = 10;
+  int max_num_images = 20;
   for (const auto &entry : std::filesystem::directory_iterator(image_dir)) {
     image_paths.push_back(entry.path());
-    if (image_paths.size() >= 10) {
+    if (image_paths.size() >= max_num_images) {
       break;
     }
   }
@@ -189,7 +191,7 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  std::vector<AVPacket *> encodec_pkts;
+  std::vector<AVPacket *> encoded_pkts;
 
   std::vector<std::vector<uint8_t>> encoded_packet_data;
   /*
@@ -229,7 +231,7 @@ int main(int argc, char **argv) {
 
     // encode
     encode(encoder_context, frame, pkt);
-    encodec_pkts.push_back(av_packet_clone(pkt));
+    encoded_pkts.push_back(av_packet_clone(pkt));
     std::vector<uint8_t> pkt_data;
     pkt_data.resize(pkt->size);
     std::cout << "Pkt size " << pkt->size << std::endl;
@@ -244,7 +246,7 @@ int main(int argc, char **argv) {
     total_size += pkt_data.size();
   }
 
-  std::cout << "Number of Encoded packets:" << encodec_pkts.size()
+  std::cout << "Number of Encoded packets:" << encoded_pkts.size()
             << " Total size = " << total_size << std::endl;
 
   /*
@@ -267,6 +269,8 @@ int main(int argc, char **argv) {
   AVCodecContext *decoder_context = NULL;
   AVFrame *decoded_frame;
   AVPacket *decode_pkt;
+  // Add Low Delay Flag for low latency application.
+  decoder_context->flags |= AV_CODEC_FLAG_LOW_DELAY;
   int eof;
   decode_pkt = av_packet_alloc();
   if (!decode_pkt) exit(1);
@@ -299,24 +303,31 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  for (const auto &pkt_data : encoded_packet_data) {
-    std::cout << "Parsing packet (size= " << pkt_data.size() << std::endl;
-    ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,
-                           &decode_pkt->size, pkt_data.data(), pkt_data.size(),
-                           AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
-
-    std::cout << "Parse result " << av_err2str(ret) << std::endl;
-
-    if (ret < 0) {
-      fprintf(stderr, "Error while parsing\n");
-      exit(1);
-    }
-
-    if (pkt->size)
-      decode(decoder_context, decoded_frame, decode_pkt);
-    else
-      break;
+  for (auto &pkt : encoded_pkts) {
+    decode(decoder_context, decoded_frame, pkt);
+    av_packet_free(&pkt);
   }
+  decode(decoder_context, decoded_frame, NULL);
+
+  // for (const auto &pkt_data : encoded_packet_data) {
+  //   std::cout << "Parsing packet (size= " << pkt_data.size() << std::endl;
+  //   ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,
+  //                          &decode_pkt->size, pkt_data.data(),
+  //                          pkt_data.size(), AV_NOPTS_VALUE, AV_NOPTS_VALUE,
+  //                          0);
+
+  //   std::cout << "Parse result " << av_err2str(ret) << std::endl;
+
+  //   if (ret < 0) {
+  //     fprintf(stderr, "Error while parsing\n");
+  //     exit(1);
+  //   }
+
+  //   if (pkt->size)
+  //     decode(decoder_context, decoded_frame, decode_pkt);
+  //   else
+  //     break;
+  // }
 
   avcodec_free_context(&decoder_context);
   av_frame_free(&decoded_frame);
