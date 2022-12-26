@@ -36,18 +36,44 @@ static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
 
   while (ret >= 0) {
     ret = avcodec_receive_packet(enc_ctx, pkt);
+
     std::cout << "Return code: " << ret << std::endl;
     if (ret == AVERROR(EAGAIN)) {
       return;
-    } else if (ret == AVERROR_EOF)
+    } else if (ret == AVERROR_EOF) {
+      av_packet_unref(pkt);
       return;
-    else if (ret < 0) {
+    } else if (ret < 0) {
       fprintf(stderr, "Error during encoding\n");
       exit(1);
     }
 
     printf("Write packet %3" PRId64 " (size=%5d)\n", pkt->pts, pkt->size);
-    av_packet_unref(pkt);
+    return;
+  }
+}
+
+static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
+  int ret;
+  ret = avcodec_send_packet(dec_ctx, pkt);
+  if (ret < 0) {
+    fprintf(stderr, "Error sending a packet for decoding  %s\n",
+            av_err2str(ret));
+    exit(1);
+  }
+
+  while (ret >= 0) {
+    ret = avcodec_receive_frame(dec_ctx, frame);
+    std::cout << "Return code " << av_err2str(ret) << std::endl;
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+      return;
+    else if (ret < 0) {
+      fprintf(stderr, "Error during decoding\n");
+      exit(1);
+    }
+
+    printf("saving frame %3d\n", dec_ctx->frame_number);
+    fflush(stdout);
   }
 }
 
@@ -83,7 +109,7 @@ int main(int argc, char **argv) {
     std::cout << path << std::endl;
   }
 
-  /**
+  /*
    * Encoding
    *
    *
@@ -141,7 +167,6 @@ int main(int argc, char **argv) {
   } else if (encoder_name == "libx264rgb") {
     av_opt_set(encoder_context->priv_data, "tune", "zerolatency", 0);
   }
-
   int ret;
   ret = avcodec_open2(encoder_context, encoder, NULL);
   if (ret < 0) {
@@ -164,6 +189,9 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  std::vector<AVPacket *> encodec_pkts;
+
+  std::vector<std::vector<uint8_t>> encoded_packet_data;
   /*
 
   Main Image Encoding loop
@@ -201,15 +229,98 @@ int main(int argc, char **argv) {
 
     // encode
     encode(encoder_context, frame, pkt);
+    encodec_pkts.push_back(av_packet_clone(pkt));
+    std::vector<uint8_t> pkt_data;
+    pkt_data.resize(pkt->size);
+    std::cout << "Pkt size " << pkt->size << std::endl;
+    std::memcpy(pkt_data.data(), pkt->data, pkt->size);
+    encoded_packet_data.push_back(pkt_data);
+    av_packet_unref(pkt);
   }
   encode(encoder_context, NULL, pkt);
 
+  int total_size = 0;
+  for (const auto &pkt_data : encoded_packet_data) {
+    total_size += pkt_data.size();
+  }
+
+  std::cout << "Number of Encoded packets:" << encodec_pkts.size()
+            << " Total size = " << total_size << std::endl;
+
   /*
-  Free resources
+  Free Encoding resources
   */
   avcodec_free_context(&encoder_context);
   av_frame_free(&frame);
   av_packet_free(&pkt);
+
+  /*
+   * Decoding
+   *
+   *
+   *
+   *
+   */
+
+  const AVCodec *decoder;
+  AVCodecParserContext *parser;
+  AVCodecContext *decoder_context = NULL;
+  AVFrame *decoded_frame;
+  AVPacket *decode_pkt;
+  int eof;
+  decode_pkt = av_packet_alloc();
+  if (!decode_pkt) exit(1);
+  decoder = avcodec_find_decoder_by_name("h264_cuvid");
+  if (!decoder) {
+    fprintf(stderr, "Decoder not found\n");
+    exit(1);
+  }
+  parser = av_parser_init(decoder->id);
+  if (!parser) {
+    fprintf(stderr, "parser not found\n");
+    exit(1);
+  }
+  decoder_context = avcodec_alloc_context3(decoder);
+  if (!decoder_context) {
+    fprintf(stderr, "Could not allocate video codec context\n");
+    exit(1);
+  }
+  decoder_context->time_base = (AVRational){1, 10};
+
+  /* open it */
+  if (avcodec_open2(decoder_context, decoder, NULL) < 0) {
+    fprintf(stderr, "Could not open codec\n");
+    exit(1);
+  }
+
+  decoded_frame = av_frame_alloc();
+  if (!decoded_frame) {
+    fprintf(stderr, "Could not allocate video frame\n");
+    exit(1);
+  }
+
+  for (const auto &pkt_data : encoded_packet_data) {
+    std::cout << "Parsing packet (size= " << pkt_data.size() << std::endl;
+    ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,
+                           &decode_pkt->size, pkt_data.data(), pkt_data.size(),
+                           AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+
+    std::cout << "Parse result " << av_err2str(ret) << std::endl;
+
+    if (ret < 0) {
+      fprintf(stderr, "Error while parsing\n");
+      exit(1);
+    }
+
+    if (pkt->size)
+      decode(decoder_context, decoded_frame, decode_pkt);
+    else
+      break;
+  }
+
+  avcodec_free_context(&decoder_context);
+  av_frame_free(&decoded_frame);
+  av_packet_free(&decode_pkt);
 
   return 0;
 }
