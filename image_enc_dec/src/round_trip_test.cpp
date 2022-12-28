@@ -55,7 +55,7 @@ static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
       av_packet_unref(pkt);
       return;
     } else if (ret == AVERROR_EOF) {
-      spdlog::error("Receive packet EOF.");
+      spdlog::warn("Receive packet EOF.");
       av_packet_unref(pkt);
       return;
     } else if (ret < 0) {
@@ -78,12 +78,15 @@ static void encode(AVCodecContext *enc_ctx, AVFrame *frame, AVPacket *pkt) {
  */
 static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
   int ret;
+
+  if (pkt) {
+    spdlog::info("Send pkt.");
+  }
   ret = avcodec_send_packet(dec_ctx, pkt);
   if (ret < 0) {
     spdlog::error("Error sending a packet for decoding: {}.", av_err2str(ret));
     return;
   }
-  std::cout << "Sent a packet" << std::endl;
 
   while (ret >= 0 || ret == AVERROR(EAGAIN)) {
     ret = avcodec_receive_frame(dec_ctx, frame);
@@ -94,7 +97,7 @@ static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
           "current state - user must try to send input.");
       return;
     } else if (ret == AVERROR_EOF) {
-      spdlog::error("Receive frame EOF.");
+      spdlog::warn("Receive frame EOF.");
       return;
     } else if (ret < 0) {
       spdlog::error("Error during decoding: {}", av_err2str(ret));
@@ -127,7 +130,7 @@ int main(int argc, char **argv) {
        "number of images to be used in this test")  //
       ("bit_rate", po::value<int>()->default_value(5000000),
        "encoder bit rate")  //
-      ("gop_size", po::value<int>()->default_value(1),
+      ("gop_size", po::value<int>()->default_value(10),
        "Encoder Group of Pictures size.  Emit one intra frame in each group.");
 
   po::variables_map boost_args;
@@ -297,12 +300,20 @@ int main(int argc, char **argv) {
     int uv_channel_size = img.size().width * img.size().height / 4;
     original_bgr_images.push_back(img);
 
-    // Fill The AVFrame with image data.
-    // Set the alignment to 32.
-    av_image_fill_arrays(input_frame->data, input_frame->linesize,
-                         img_yuv420p.data,
-                         static_cast<AVPixelFormat>(input_frame->format),
-                         img.size().width, img.size().height, 32);
+    // Manually Copy input data to frame buffer
+    std::memcpy(input_frame->data[0], img_yuv420p.data, y_channel_size);
+    std::memcpy(input_frame->data[1], img_yuv420p.data + y_channel_size,
+                uv_channel_size);
+    std::memcpy(input_frame->data[2],
+                img_yuv420p.data + y_channel_size + uv_channel_size,
+                uv_channel_size);
+
+    // // Fill The AVFrame with image data using av_image_fill_arrays .
+    // // Set the alignment to 32.
+    // av_image_fill_arrays(input_frame->data, input_frame->linesize,
+    //                      img_yuv420p.data,
+    //                      static_cast<AVPixelFormat>(input_frame->format),
+    //                      img.size().width, img.size().height, 32);
 
     // frame timestamp = pts * timebase
     input_frame->pts = frame_idx;
@@ -356,21 +367,20 @@ int main(int argc, char **argv) {
   AVPacket *decode_pkt;
 
   decode_pkt = av_packet_alloc();
-  if (!decode_pkt) exit(1);
-
-  if (!encoder_context) {
-    spdlog::error("Could not allocate video codec context.");
+  if (!decode_pkt) {
+    spdlog::error("Could not allocate packet for decoding");
     return 1;
   }
-  decoder = avcodec_find_decoder_by_name("h264");
+
+  decoder = avcodec_find_decoder_by_name(decoder_name.c_str());
   if (!decoder) {
-    fprintf(stderr, "Decoder not found\n");
-    exit(1);
+    spdlog::error("Could not find decoder: {}", decoder_name);
+    return 1;
   }
   parser = av_parser_init(decoder->id);
   if (!parser) {
-    fprintf(stderr, "parser not found\n");
-    exit(1);
+    spdlog::error("Could not  initialize parser: {}");
+    return 1;
   }
 
   // Set the PARSER_FLAG_COMPLETE_FRAMES to get the parsed data before the next
@@ -378,68 +388,71 @@ int main(int argc, char **argv) {
   parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
   decoder_context = avcodec_alloc_context3(decoder);
   if (!decoder_context) {
-    fprintf(stderr, "Could not allocate video codec context\n");
-    exit(1);
+    spdlog::error("Could not allocate decoder context.");
+    return 1;
   }
 
   // Add Low Delay Flag for low latency application.
   // https://github.com/FFmpeg/FFmpeg/blob/eeb280f3518a8d7fc2e45f06ac7748f42d8a0000/libavcodec/cuviddec.c#L988
   decoder_context->flags |= AV_CODEC_FLAG_LOW_DELAY;
-  // decoder_context->time_base = (AVRational){1, 10};
 
-  /* open it */
-  if (avcodec_open2(decoder_context, decoder, NULL) < 0) {
-    fprintf(stderr, "Could not open codec\n");
-    exit(1);
+  ret = avcodec_open2(decoder_context, decoder, NULL);
+  if (ret < 0) {
+    spdlog::error("Could not open decoder: {}", av_err2str(ret));
+    return 1;
   }
 
   decoded_frame = av_frame_alloc();
   if (!decoded_frame) {
-    fprintf(stderr, "Could not allocate video frame\n");
-    exit(1);
+    spdlog::error("Could not allocate video frame for decoding.");
+    return 1;
   }
 
-  /*
-  Use packet data vector
-  */
+  //
+  // Main decoding loop
+  //
   std::vector<cv::Mat> decoded_frames;
   int pkt_idx = 0;
+  double mse_r = 0.0;
+  double mse_g = 0.0;
+  double mse_b = 0.0;
+  double psnr_r = 0.0;
+  double psnr_g = 0.0;
+  double psnr_b = 0.0;
   for (auto &pkt_data : encoded_packet_data) {
-    std::cout << "Parsing packet (size= " << pkt_data.size() << std::endl;
-
+    spdlog::info("Parse and Decode frame idx = {}", pkt_idx);
     ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,
                            &decode_pkt->size, pkt_data.data(), pkt_data.size(),
                            AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
 
-    std::cout << "Parse result 0 " << av_err2str(ret) << std::endl;
-
-    if (decode_pkt->size) {
-      std::cout << "Parsed a packet" << std::endl;
-    }
     if (ret < 0) {
-      fprintf(stderr, "Error while parsing\n");
-      exit(1);
+      spdlog::error("Error while parsing packet idx = {}", pkt_idx);
+      return 1;
     }
 
-    // if (decode_pkt->size) decode(decoder_context, decoded_frame,
-    // decode_pkt);
-
-    if (decode_pkt->size) {
+    if (!decode_pkt->size) {
+      spdlog::error("Parsed unfinished packet idx = {}", pkt_idx);
+      break;
+    } else {
       decode(decoder_context, decoded_frame, decode_pkt);
+      spdlog::info("Decoded frame {}, type = {}", pkt_idx,
+                   decoded_frame->pict_type);
 
       cv::Mat image(decoded_frame->height * 3 / 2, decoded_frame->width,
                     CV_8UC1);
       int y_channel_size = decoded_frame->width * decoded_frame->height;
       int uv_channel_size = decoded_frame->width * decoded_frame->height / 4;
-
       int image_data_size = y_channel_size + 2 * uv_channel_size;
 
+      // Manually Copy Frame data to cv::Mat
+      // Y channel
       for (int row = 0; row < decoded_frame->height; row++) {
         std::memcpy(image.data + row * decoded_frame->width,
                     decoded_frame->data[0] + row * decoded_frame->linesize[0],
                     decoded_frame->width);
       }
 
+      // UV channels
       for (int row = 0; row < decoded_frame->height / 2; row++) {
         std::memcpy(
             image.data + y_channel_size + row * decoded_frame->width / 2,
@@ -451,6 +464,8 @@ int main(int argc, char **argv) {
                     decoded_frame->width / 2);
       }
 
+      // // Get The AVFrame with image data using av_image_copy_to_buffer.
+      // // Use the same alignment as the encoder (32).
       // av_image_copy_to_buffer(image.data, image_data_size,
       // decoded_frame->data,
       //                         decoded_frame->linesize,
@@ -460,29 +475,42 @@ int main(int argc, char **argv) {
 
       cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
       cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
-      // cv::imshow("test_image", image_bgr);
-      // cv::waitKey(0);
+
+      // Calculate quality metrics
       auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
                                                   image_bgr, cv::noArray());
-      auto ssim = cv::quality::QualitySSIM::compute(
-          original_bgr_images[pkt_idx], image_bgr, cv::noArray());
       auto psnr = cv::quality::QualityPSNR::compute(
           original_bgr_images[pkt_idx], image_bgr, cv::noArray());
 
-      std::cout << "Image quality scores MSE = " << mse << " .SSIM = " << ssim
-                << " .PSNR = " << psnr << std::endl;
+      mse_b += mse[0];
+      mse_g += mse[1];
+      mse_r += mse[2];
+
+      psnr_b += psnr[0];
+      psnr_g += psnr[1];
+      psnr_r += psnr[2];
+
       if (save_output) {
         auto output_path = output_dir / image_paths[pkt_idx].filename();
         cv::imwrite(output_path, image_bgr);
-        std::cout << "Saved to output_path << " << output_path << std::endl;
+        // spdlog::info("Saved Image to :{}", output_path.string());
       }
-    } else {
-      std::cout << "Missing frames for decoding " << av_err2str(ret)
-                << std::endl;
-      break;
     }
     pkt_idx++;
   }
+
+  mse_b /= encoded_packet_data.size();
+  mse_g /= encoded_packet_data.size();
+  mse_r /= encoded_packet_data.size();
+
+  psnr_b /= encoded_packet_data.size();
+  psnr_g /= encoded_packet_data.size();
+  psnr_r /= encoded_packet_data.size();
+
+  spdlog::info("Average Image quality scores:");
+  spdlog::info("BGR MSE (Lower is better) = [{}, {}, {}]", mse_b, mse_g, mse_r);
+  spdlog::info("BGR PSNR (Should be ~30-50dB, higher is better) = [{}, {}, {}]",
+               psnr_b, psnr_g, psnr_r);
 
   av_parser_close(parser);
   avcodec_free_context(&decoder_context);
