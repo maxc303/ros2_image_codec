@@ -5,11 +5,13 @@ extern "C" {
 #include <libavcodec/codec.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libswscale/swscale.h>
 }
 #include <boost/program_options.hpp>
 #include <filesystem>
 #include <iostream>
 #include <opencv4/opencv2/opencv.hpp>
+#include <opencv4/opencv2/quality.hpp>
 #include <string>
 
 #ifdef av_err2str
@@ -110,7 +112,7 @@ int main(int argc, char **argv) {
   std::filesystem::path input_dir = boost_args["input_dir"].as<std::string>();
   std::vector<std::filesystem::path> image_paths;
 
-  int max_num_images = 20;
+  int max_num_images = 10;
   for (const auto &entry : std::filesystem::directory_iterator(input_dir)) {
     image_paths.push_back(entry.path());
     if (image_paths.size() >= max_num_images) {
@@ -135,7 +137,7 @@ int main(int argc, char **argv) {
   AVFrame *frame;
   AVPacket *pkt;
 
-  std::string encoder_name = "libx264";
+  std::string encoder_name = "h264_nvenc";
   encoder = avcodec_find_encoder_by_name(encoder_name.c_str());
   if (!encoder) {
     fprintf(stderr, "Codec '%s' not found\n", encoder_name.c_str());
@@ -153,7 +155,7 @@ int main(int argc, char **argv) {
   if (!pkt) return 1;
 
   /* put sample parameters */
-  encoder_context->bit_rate = 400000;
+  encoder_context->bit_rate = 4000000;
   /* resolution must be a multiple of two */
   encoder_context->width = 1600;
   encoder_context->height = 900;
@@ -169,7 +171,6 @@ int main(int argc, char **argv) {
   encoder_context->gop_size = 5;
   encoder_context->max_b_frames = 0;
   encoder_context->pix_fmt = AV_PIX_FMT_YUV420P;
-  encoder_context->thread_count = 0;
 
   // Extra settings to enable frame can be retrievd without waiting for more
   // frames.
@@ -210,6 +211,7 @@ int main(int argc, char **argv) {
   Main Image Encoding loop
   */
   int frame_idx = 0;
+  std::vector<cv::Mat> original_bgr_images;
   for (const auto &path : image_paths) {
     cv::Mat img = imread(path, cv::IMREAD_COLOR);
     if (img.size().width != encoder_context->width ||
@@ -224,16 +226,35 @@ int main(int argc, char **argv) {
     ret = av_frame_make_writable(frame);
     if (ret < 0) exit(1);
 
+    // // Test gray image
+    // img = cv::Mat(img.size().width, img.size().height, CV_8UC3,
+    //               cv::Scalar(127, 127, 127));
+
     cv::Mat img_yuv420p;
     cv::cvtColor(img, img_yuv420p, cv::COLOR_BGR2YUV_I420);
+
+    // cv::Mat image_bgr;
+    // cv::cvtColor(img_yuv420p, image_bgr, cv::COLOR_YUV2BGR_NV12, 3);
+    // cv::imshow("test_image", image_bgr);
+    // cv::waitKey(0);
+
     // Copy frame data from yuv channel
-    int ch_size = img.size().width * img.size().height;
-    std::memcpy(frame->data[0], img_yuv420p.data, ch_size * 3 / 2);
+    int y_channel_size = img.size().width * img.size().height;
+    int uv_channel_size = img.size().width * img.size().height / 4;
+    original_bgr_images.push_back(img);
+    std::memcpy(frame->data[0], img_yuv420p.data, y_channel_size);
+    std::memcpy(frame->data[1], img_yuv420p.data + y_channel_size,
+                uv_channel_size);
+    std::memcpy(frame->data[2],
+                img_yuv420p.data + y_channel_size + uv_channel_size,
+                uv_channel_size);
+
+    // av_image_fill_arrays(frame->data, frame->linesize, img_yuv420p.data,
+    //                      static_cast<AVPixelFormat>(frame->format),
+    //                      img.size().width, img.size().height, 32);
 
     // timestamp = index * timebase
     frame->pts = frame_idx;
-    frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->key_frame = 1;
     frame_idx++;
 
     // encode
@@ -320,16 +341,41 @@ int main(int argc, char **argv) {
   // /*
   // Use Saved Packet
   // */
+  // int pkt_idx = 0;
   // for (auto &pkt : encoded_pkts) {
   //   decode(decoder_context, decoded_frame, pkt);
+  //   std::cout << "frame type " << decoded_frame->pict_type << std::endl;
+  //   cv::Mat image(decoded_frame->height * 3 / 2, decoded_frame->width,
+  //   CV_8UC1);
+
+  //   int y_channel_size = decoded_frame->width * decoded_frame->height;
+  //   int uv_channel_size = decoded_frame->width * decoded_frame->height / 4;
+  //   // std::memcpy(image.data, decoded_frame->data[0], y_channel_size);
+  //   // std::memcpy(image.data + y_channel_size, decoded_frame->data[1],
+  //   //             uv_channel_size);
+  //   // std::memcpy(image.data + y_channel_size + uv_channel_size,
+  //   //             decoded_frame->data[2], uv_channel_size);
+
+  //   int image_data_size = y_channel_size + 2 * uv_channel_size;
+  //   av_image_copy_to_buffer(image.data, image_data_size, decoded_frame->data,
+  //                           decoded_frame->linesize,
+  //                           static_cast<AVPixelFormat>(decoded_frame->format),
+  //                           decoded_frame->width, decoded_frame->height, 32);
+
+  //   cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
+  //   cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+  //   cv::imshow("test_image", image_bgr);
+  //   cv::waitKey(0);
+
   //   av_packet_free(&pkt);
   // }
   // decode(decoder_context, decoded_frame, NULL);
 
+  /*
+  Use packet data vector
+  */
   std::vector<cv::Mat> decoded_frames;
-
   int pkt_idx = 0;
-
   for (auto &pkt_data : encoded_packet_data) {
     std::cout << "Parsing packet (size= " << pkt_data.size() << std::endl;
 
@@ -347,7 +393,9 @@ int main(int argc, char **argv) {
       exit(1);
     }
 
-    // if (decode_pkt->size) decode(decoder_context, decoded_frame, decode_pkt);
+    // if (decode_pkt->size) decode(decoder_context, decoded_frame,
+    // decode_pkt);
+
     if (decode_pkt->size) {
       decode(decoder_context, decoded_frame, decode_pkt);
 
@@ -355,15 +403,26 @@ int main(int argc, char **argv) {
                     CV_8UC1);
       int y_channel_size = decoded_frame->width * decoded_frame->height;
       int uv_channel_size = decoded_frame->width * decoded_frame->height / 4;
-      std::memcpy(image.data, decoded_frame->data[0], y_channel_size);
-      std::memcpy(image.data + y_channel_size, decoded_frame->data[1],
-                  uv_channel_size);
-      std::memcpy(image.data + y_channel_size + uv_channel_size,
-                  decoded_frame->data[2], uv_channel_size);
+
+      int image_data_size = y_channel_size + 2 * uv_channel_size;
+      av_image_copy_to_buffer(image.data, image_data_size, decoded_frame->data,
+                              decoded_frame->linesize,
+                              static_cast<AVPixelFormat>(decoded_frame->format),
+                              decoded_frame->width, decoded_frame->height, 32);
 
       cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
-      cv::cvtColor(image, image_bgr, cv::COLOR_YUV420p2BGR, 3);
+      cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+      // cv::imshow("test_image", image_bgr);
+      // cv::waitKey(0);
+      auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
+                                                  image_bgr, cv::noArray());
+      auto ssim = cv::quality::QualitySSIM::compute(
+          original_bgr_images[pkt_idx], image_bgr, cv::noArray());
+      auto psnr = cv::quality::QualityPSNR::compute(
+          original_bgr_images[pkt_idx], image_bgr, cv::noArray());
 
+      std::cout << "Image quality scores MSE = " << mse << " .SSIM = " << ssim
+                << " .PSNR = " << psnr << std::endl;
       if (save_output) {
         auto output_path = output_dir / image_paths[pkt_idx].filename();
         cv::imwrite(output_path, image_bgr);
