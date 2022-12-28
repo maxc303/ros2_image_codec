@@ -41,9 +41,11 @@ target_include_directories(ffmpeg_encoder PUBLIC include)
 
 find_package(Boost COMPONENTS program_options REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(spdlog REQUIRED)
 
 add_executable(round_trip_test src/round_trip_test.cpp)
 target_link_libraries(round_trip_test
+  spdlog::spdlog
   ${OpenCV_LIBRARIES}
   ${Boost_LIBRARIES}
   ${AVCODEC_LIBRARY}
