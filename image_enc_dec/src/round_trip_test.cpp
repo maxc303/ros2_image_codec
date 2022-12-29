@@ -236,8 +236,15 @@ int main(int argc, char **argv) {
   if (encoder_name == "h264_nvenc") {
     av_opt_set(encoder_context->priv_data, "zerolatency", "1", 0);
     av_opt_set(encoder_context->priv_data, "delay", "0", 0);
+    if (bit_rate == 0) {
+      av_opt_set(encoder_context->priv_data, "tune", "lossless", 0);
+    }
+
   } else if (encoder_name == "libx264") {
     av_opt_set(encoder_context->priv_data, "tune", "zerolatency", 0);
+    if (bit_rate == 0) {
+      av_opt_set(encoder_context->priv_data, "crf", "0", 0);
+    }
   }
 
   int ret;
