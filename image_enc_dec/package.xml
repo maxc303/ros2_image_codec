@@ -4,7 +4,7 @@
   <name>image_enc_dec</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="maxc@todo.todo">maxc</maintainer>
+  <maintainer email="yingman.chen@mail.utoronto.ca">maxc</maintainer>
   <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
