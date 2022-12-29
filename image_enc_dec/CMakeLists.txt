@@ -61,6 +61,22 @@ target_include_directories(encoder_node PUBLIC
 target_compile_features(encoder_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 target_link_libraries(encoder_node ffmpeg_encoder)
 
+find_package(cv_bridge REQUIRED)
+find_package(rclcpp)
+find_package(sensor_msgs REQUIRED)
+add_executable(publish_images src/publish_images.cpp)
+ament_target_dependencies(publish_images
+  rclcpp
+  cv_bridge
+  sensor_msgs
+)
+target_link_libraries(publish_images
+  spdlog::spdlog
+  ${OpenCV_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${Boost_LIBRARIES}
+)
+
 install(TARGETS encoder_node
   DESTINATION lib/${PROJECT_NAME})
 
