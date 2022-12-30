@@ -233,14 +233,14 @@ int main(int argc, char **argv) {
 
   // Extra settings to make sure that frames can be retrievd without delay.
   // Use ffmpeg -h encoder={encoder-name} to list the options
-  if (encoder_name == "h264_nvenc") {
+  if (encoder_name == "h264_nvenc" || encoder_name == "hevc_nvenc") {
     av_opt_set(encoder_context->priv_data, "zerolatency", "1", 0);
     av_opt_set(encoder_context->priv_data, "delay", "0", 0);
     if (bit_rate == 0) {
       av_opt_set(encoder_context->priv_data, "tune", "lossless", 0);
     }
 
-  } else if (encoder_name == "libx264") {
+  } else if (encoder_name == "libx264" || encoder_name == "libx265") {
     av_opt_set(encoder_context->priv_data, "tune", "zerolatency", 0);
     if (bit_rate == 0) {
       av_opt_set(encoder_context->priv_data, "crf", "0", 0);
