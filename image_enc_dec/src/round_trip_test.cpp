@@ -297,15 +297,19 @@ int main(int argc, char **argv) {
                     av_err2str(ret));
       return 1;
     }
+    original_bgr_images.push_back(img);
 
     // Note: YUV420p planar is YUV_I420 in OpenCV
     cv::Mat img_yuv420p;
+    auto t_0 = std::chrono::high_resolution_clock::now();
+
     cv::cvtColor(img, img_yuv420p, cv::COLOR_BGR2YUV_I420);
+    auto t_1 = std::chrono::high_resolution_clock::now();
 
     // Copy frame data from yuv channel
     int y_channel_size = img.size().width * img.size().height;
     int uv_channel_size = img.size().width * img.size().height / 4;
-    original_bgr_images.push_back(img);
+    auto t_2 = std::chrono::high_resolution_clock::now();
 
     // Manually Copy input data to frame buffer
     std::memcpy(input_frame->data[0], img_yuv420p.data, y_channel_size);
@@ -314,6 +318,7 @@ int main(int argc, char **argv) {
     std::memcpy(input_frame->data[2],
                 img_yuv420p.data + y_channel_size + uv_channel_size,
                 uv_channel_size);
+    auto t_3 = std::chrono::high_resolution_clock::now();
 
     // // Fill The AVFrame with image data using av_image_fill_arrays .
     // // Set the alignment to 32.
@@ -332,9 +337,29 @@ int main(int argc, char **argv) {
       spdlog::info("Failed to encode frame in one call.");
       break;
     }
+    auto t_4 = std::chrono::high_resolution_clock::now();
+
     encoded_packet_data.emplace_back(std::vector<uint8_t>(pkt->size));
     std::memcpy(encoded_packet_data.back().data(), pkt->data, pkt->size);
+    auto t_5 = std::chrono::high_resolution_clock::now();
 
+    auto t_convert_color =
+        std::chrono::duration_cast<std::chrono::microseconds>(t_1 - t_0)
+            .count();
+    auto t_copy_to_frame =
+        std::chrono::duration_cast<std::chrono::microseconds>(t_3 - t_2)
+            .count();
+    auto t_encode =
+        std::chrono::duration_cast<std::chrono::microseconds>(t_4 - t_3)
+            .count();
+    auto t_copy_to_packet =
+        std::chrono::duration_cast<std::chrono::microseconds>(t_5 - t_4)
+            .count();
+
+    spdlog::info(
+        "t convert color = {} us, t copy to frame = {} us, t encode = {} us, t "
+        "copy to packet = {} us",
+        t_convert_color, t_copy_to_frame, t_encode, t_copy_to_packet);
     // Free the packet
     av_packet_unref(pkt);
   }
