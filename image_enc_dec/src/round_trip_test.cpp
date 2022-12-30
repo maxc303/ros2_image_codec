@@ -279,6 +279,11 @@ int main(int argc, char **argv) {
   int frame_idx = 0;
   std::vector<cv::Mat> original_bgr_images;
   std::vector<std::vector<uint8_t>> encoded_packet_data;
+  SwsContext *from_cv = sws_getContext(
+      encoder_context->width, encoder_context->height,
+      static_cast<AVPixelFormat>(AV_PIX_FMT_BGR24), encoder_context->width,
+      encoder_context->height, static_cast<AVPixelFormat>(AV_PIX_FMT_YUV420P),
+      SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
   for (const auto &path : image_paths) {
     cv::Mat img = imread(path, cv::IMREAD_COLOR);
@@ -290,34 +295,22 @@ int main(int argc, char **argv) {
       spdlog::error("Could not read the image: path = {}", path.string());
       return 1;
     }
-
+    original_bgr_images.push_back(img);
     ret = av_frame_make_writable(input_frame);
     if (ret < 0) {
       spdlog::error("Could not make the frame writable: err =",
                     av_err2str(ret));
       return 1;
     }
-
-    // Note: YUV420p planar is YUV_I420 in OpenCV
-    cv::Mat img_yuv420p;
     auto t_0 = std::chrono::high_resolution_clock::now();
 
-    cv::cvtColor(img, img_yuv420p, cv::COLOR_BGR2YUV_I420);
-    auto t_1 = std::chrono::high_resolution_clock::now();
+    int cv_linesize[1];
+    cv_linesize[0] = img.step[0];
+    sws_scale(from_cv, &img.data, cv_linesize, 0, encoder_context->height,
+              input_frame->data, input_frame->linesize);
 
-    // Copy frame data from yuv channel
-    int y_channel_size = img.size().width * img.size().height;
-    int uv_channel_size = img.size().width * img.size().height / 4;
-    original_bgr_images.push_back(img);
-    auto t_2 = std::chrono::high_resolution_clock::now();
+    // Note: YUV420p planar is YUV_I420 in OpenCV
 
-    // Manually Copy input data to frame buffer
-    std::memcpy(input_frame->data[0], img_yuv420p.data, y_channel_size);
-    std::memcpy(input_frame->data[1], img_yuv420p.data + y_channel_size,
-                uv_channel_size);
-    std::memcpy(input_frame->data[2],
-                img_yuv420p.data + y_channel_size + uv_channel_size,
-                uv_channel_size);
     auto t_3 = std::chrono::high_resolution_clock::now();
 
     // // Fill The AVFrame with image data using av_image_fill_arrays .
@@ -343,11 +336,8 @@ int main(int argc, char **argv) {
     std::memcpy(encoded_packet_data.back().data(), pkt->data, pkt->size);
     auto t_5 = std::chrono::high_resolution_clock::now();
 
-    auto t_convert_color =
-        std::chrono::duration_cast<std::chrono::microseconds>(t_1 - t_0)
-            .count();
     auto t_copy_to_frame =
-        std::chrono::duration_cast<std::chrono::microseconds>(t_3 - t_2)
+        std::chrono::duration_cast<std::chrono::microseconds>(t_3 - t_0)
             .count();
     auto t_encode =
         std::chrono::duration_cast<std::chrono::microseconds>(t_4 - t_3)
@@ -357,9 +347,9 @@ int main(int argc, char **argv) {
             .count();
 
     spdlog::info(
-        "t convert color = {} us, t copy to frame = {} us, t encode = {} us, t "
+        "t convert and copy to frame = {} us, t encode = {} us, t "
         "copy to packet = {} us",
-        t_convert_color, t_copy_to_frame, t_encode, t_copy_to_packet);
+        t_copy_to_frame, t_encode, t_copy_to_packet);
     // Free the packet
     av_packet_unref(pkt);
   }
@@ -384,6 +374,7 @@ int main(int argc, char **argv) {
   //
   // Free Encoding resources
   //
+  sws_freeContext(from_cv);
   avcodec_free_context(&encoder_context);
   av_frame_free(&input_frame);
   av_packet_free(&pkt);
@@ -451,6 +442,7 @@ int main(int argc, char **argv) {
   double psnr_r = 0.0;
   double psnr_g = 0.0;
   double psnr_b = 0.0;
+
   for (auto &pkt_data : encoded_packet_data) {
     spdlog::info("Parse and Decode frame idx = {}", pkt_idx);
     ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,

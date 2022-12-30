@@ -14,7 +14,7 @@ find_package(ament_cmake REQUIRED)
 set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
-
+set(PC_SWSCALE_LIBDIR /usr/lib/x86_64-linux-gnu/)
 # FFmpeg libraries
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_library(AVCODEC_LIBRARY NAMES avcodec
@@ -33,6 +33,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             HINTS
             ${PC_AVUTIL_LIBDIR}
             )
+    find_library(SWSCALE_LIBRARY NAMES swscale
+            HINTS 
+            ${PC_SWSCALE_LIBDIR})
 endif()
 
 add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
@@ -51,6 +54,7 @@ target_link_libraries(round_trip_test
   ${AVCODEC_LIBRARY}
   ${AVFORMAT_LIBRARY}
   ${AVUTIL_LIBRARY}
+  ${SWSCALE_LIBRARY}
 )
 
 
