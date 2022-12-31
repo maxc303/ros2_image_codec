@@ -11,51 +11,46 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
-set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
-set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
-set(PC_NVENCODEAPI_LIBDIR /usr/lib/x86_64-linux-gnu/)
-# FFmpeg libraries
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_library(AVCODEC_LIBRARY NAMES avcodec
-            HINTS
-            ${PC_AVCODEC_LIBDIR}
-            )
+# set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
+# set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
+# set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
+# # FFmpeg libraries
+# if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+#     find_library(AVCODEC_LIBRARY NAMES avcodec
+#             HINTS
+#             ${PC_AVCODEC_LIBDIR}
+#             )
 
-    if(NOT AVCODEC_LIBRARY )
-      message(FATAL_ERROR "avcodec library not found")
-    endif()
-    find_library(AVFORMAT_LIBRARY NAMES avformat
-            HINTS
-            ${PC_AVFORMAT_LIBDIR}
-            )
-    find_library(AVUTIL_LIBRARY NAMES avutil
-            HINTS
-            ${PC_AVUTIL_LIBDIR}
-            )
-    find_library(NVENCODEAPI_LIBRARAY NAMES nvidia-encode
-          HINTS 
-          ${PC_NVENCODEAPI_LIBDIR}
-          )
+#     if(NOT AVCODEC_LIBRARY )
+#       message(FATAL_ERROR "avcodec library not found")
+#     endif()
+#     find_library(AVFORMAT_LIBRARY NAMES avformat
+#             HINTS
+#             ${PC_AVFORMAT_LIBDIR}
+#             )
+#     find_library(AVUTIL_LIBRARY NAMES avutil
+#             HINTS
+#             ${PC_AVUTIL_LIBDIR}
+#             )
 
-endif()
+# endif()
 
-add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
-target_include_directories(ffmpeg_encoder PUBLIC include)
+# add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
+# target_include_directories(ffmpeg_encoder PUBLIC include)
 
 
 
 add_subdirectory(cuvid_round_trip_test)
 
-add_executable(encoder_node src/encoder_node.cpp)
-target_include_directories(encoder_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_compile_features(encoder_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-target_link_libraries(encoder_node ffmpeg_encoder)
+# add_executable(encoder_node src/encoder_node.cpp)
+# target_include_directories(encoder_node PUBLIC
+#   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+#   $<INSTALL_INTERFACE:include>)
+# target_compile_features(encoder_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+# target_link_libraries(encoder_node ffmpeg_encoder)
 
-install(TARGETS encoder_node
-  DESTINATION lib/${PROJECT_NAME})
+# install(TARGETS encoder_node
+#   DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
