@@ -6,14 +6,12 @@
 #include <boost/program_options.hpp>
 #include <filesystem>
 #include <iostream>
+#include <opencv4/opencv2/opencv.hpp>
 
 #include "nvEncodeAPI.h"
 #include "nvcuvid.h"
-// #include <opencv4/opencv2/opencv.hpp>
 // #include <opencv4/opencv2/quality.hpp>
 // #include <string>
-
-// namespace po = boost::program_options;
 
 /**
  * @brief Exception class for error reporting from NvEncodeAPI calls.
@@ -52,6 +50,20 @@ inline NVENCException NVENCException::makeNVENCException(
   do {                                                          \
     throw NVENCException::makeNVENCException(                   \
         errorStr, errorCode, __FUNCTION__, __FILE__, __LINE__); \
+  } while (0)
+
+#define CUDA_DRVAPI_CALL(call)                                        \
+  do {                                                                \
+    CUresult err__ = call;                                            \
+    if (err__ != CUDA_SUCCESS) {                                      \
+      const char* szErrName = NULL;                                   \
+      cuGetErrorName(err__, &szErrName);                              \
+      std::ostringstream errorLog;                                    \
+      errorLog << "CUDA driver API error " << szErrName;              \
+      throw NVENCException::makeNVENCException(                       \
+          errorLog.str(), NV_ENC_ERR_GENERIC, __FUNCTION__, __FILE__, \
+          __LINE__);                                                  \
+    }                                                                 \
   } while (0)
 
 #define NVENC_API_CALL(nvencAPI)                                        \
@@ -153,6 +165,10 @@ int main(int argc, char** argv) {
     spdlog::info("{}", image_paths[idx].string());
   }
 
+  cv::Mat init_image = imread(image_paths[0], cv::IMREAD_COLOR);
+  int image_width = init_image.size().width;
+  int image_height = init_image.size().height;
+
   //
   // Init Encoder
   //
@@ -210,8 +226,6 @@ int main(int argc, char** argv) {
   NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
   initializeParams.encodeConfig = &encodeConfig;
 
-  int image_width = 1600;
-  int image_height = 900;
   initializeParams.encodeGUID =
       NV_ENC_CODEC_H264_GUID;  // NV_ENC_CODEC_HEVC_GUID
   initializeParams.presetGUID = NV_ENC_PRESET_P4_GUID;  // Default
@@ -266,6 +280,77 @@ int main(int argc, char** argv) {
   initializeParams.bufferFormat = NV_ENC_BUFFER_FORMAT_IYUV;
 
   NVENC_API_CALL(m_nvenc.nvEncInitializeEncoder(hEncoder, &initializeParams));
+
+  //
+  // Encoding
+  //
+
+  // Params for one frame
+  NV_ENC_PIC_PARAMS picParams = {NV_ENC_PIC_PARAMS_VER};
+  picParams.encodePicFlags = 0;
+
+  int nFrameSize = image_height * image_width * 3 / 2;  // IYUV 420
+  std::unique_ptr<uint8_t[]> pHostFrame(new uint8_t[nFrameSize]);
+  std::vector<cv::Mat> original_bgr_images;
+
+  void* pDeviceFrame;
+
+  size_t cudaPitch;
+  CUDA_DRVAPI_CALL(cuMemAllocPitch((CUdeviceptr*)&pDeviceFrame, &cudaPitch,
+                                   image_width, image_height + image_height / 2,
+                                   16));
+
+  NV_ENC_REGISTER_RESOURCE registerResource = {NV_ENC_REGISTER_RESOURCE_VER};
+  registerResource.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_CUDADEVICEPTR;
+  registerResource.resourceToRegister = pDeviceFrame;
+  registerResource.width = image_width;
+  registerResource.height = image_height;
+  registerResource.pitch = static_cast<int>(cudaPitch);
+  registerResource.bufferFormat = NV_ENC_BUFFER_FORMAT_IYUV;
+  registerResource.bufferUsage = NV_ENC_INPUT_IMAGE;
+  registerResource.pInputFencePoint = NULL;
+  NVENC_API_CALL(m_nvenc.nvEncRegisterResource(hEncoder, &registerResource));
+
+  for (const auto& path : image_paths) {
+    cv::Mat img = imread(path, cv::IMREAD_COLOR);
+    if (img.empty()) {
+      spdlog::error("Could not read the image: path = {}", path.string());
+      return 1;
+    }
+
+    original_bgr_images.push_back(img);
+    cv::Mat img_iyuv;
+    cv::cvtColor(img, img_iyuv, cv::COLOR_BGR2YUV_I420);
+
+    CUDA_MEMCPY2D m = {0};
+
+    int u_offset = image_height * image_width;
+    int v_offset = u_offset + u_offset / 4;
+    CUDA_DRVAPI_CALL(cuCtxPushCurrent(cuContext));
+
+    // Copy Y channe;
+    m.srcMemoryType = CU_MEMORYTYPE_HOST;
+    CUdeviceptr img_device;
+    m.srcHost = img_iyuv.data;
+    m.srcPitch = image_width;
+    m.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+    m.dstDevice = (CUdeviceptr)pDeviceFrame;
+    m.dstPitch = (int)cudaPitch;
+    m.WidthInBytes = image_width;
+    m.Height = image_height;
+    CUDA_DRVAPI_CALL(cuMemcpy2D(&m));
+
+    m.srcHost = img_iyuv.data + u_offset;
+    m.srcPitch = image_width / 2;
+    m.dstDevice = (CUdeviceptr)pDeviceFrame + u_offset;
+    m.dstPitch = (int)cudaPitch / 2;
+    m.WidthInBytes = image_width / 2;
+    m.Height = image_height / 2;
+    CUDA_DRVAPI_CALL(cuMemcpy2D(&m));
+    m.srcHost = img_iyuv.data + v_offset;
+    m.dstDevice = (CUdeviceptr)pDeviceFrame + v_offset;
+    CUDA_DRVAPI_CALL(cuCtxPopCurrent(NULL));
+  }
 
   if (!hEncoder) {
     return 1;
