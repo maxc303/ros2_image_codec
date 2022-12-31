@@ -14,7 +14,7 @@ find_package(ament_cmake REQUIRED)
 set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
 set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
-
+set(PC_NVENCODEAPI_LIBDIR /usr/lib/x86_64-linux-gnu/)
 # FFmpeg libraries
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_library(AVCODEC_LIBRARY NAMES avcodec
@@ -33,26 +33,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             HINTS
             ${PC_AVUTIL_LIBDIR}
             )
+    find_library(NVENCODEAPI_LIBRARAY NAMES nvidia-encode
+          HINTS 
+          ${PC_NVENCODEAPI_LIBDIR}
+          )
+
 endif()
 
 add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
 target_include_directories(ffmpeg_encoder PUBLIC include)
 
 
-find_package(Boost COMPONENTS program_options REQUIRED)
-find_package(OpenCV REQUIRED)
-find_package(spdlog REQUIRED)
 
-add_executable(round_trip_test src/round_trip_test.cpp)
-target_link_libraries(round_trip_test
-  spdlog::spdlog
-  ${OpenCV_LIBRARIES}
-  ${Boost_LIBRARIES}
-  ${AVCODEC_LIBRARY}
-  ${AVFORMAT_LIBRARY}
-  ${AVUTIL_LIBRARY}
-)
-
+add_subdirectory(cuvid_round_trip_test)
 
 add_executable(encoder_node src/encoder_node.cpp)
 target_include_directories(encoder_node PUBLIC
