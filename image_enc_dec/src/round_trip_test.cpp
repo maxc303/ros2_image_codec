@@ -7,6 +7,7 @@ extern "C" {
 #include <libavutil/opt.h>
 #include <libswscale/swscale.h>
 }
+#include <spdlog/cfg/env.h>
 #include <spdlog/spdlog.h>
 
 #include <boost/program_options.hpp>
@@ -111,6 +112,8 @@ static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
 
 namespace po = boost::program_options;
 int main(int argc, char **argv) {
+  spdlog::cfg::load_env_levels();
+
   // Parse test infomration
   po::options_description desc(
       "FFmpeg API encoding and decoding round trip test. The program will try "
@@ -356,7 +359,7 @@ int main(int argc, char **argv) {
         std::chrono::duration_cast<std::chrono::microseconds>(t_5 - t_4)
             .count();
 
-    spdlog::info(
+    spdlog::debug(
         "t convert color = {} us, t copy to frame = {} us, t encode = {} us, t "
         "copy to packet = {} us",
         t_convert_color, t_copy_to_frame, t_encode, t_copy_to_packet);
@@ -453,9 +456,13 @@ int main(int argc, char **argv) {
   double psnr_b = 0.0;
   for (auto &pkt_data : encoded_packet_data) {
     spdlog::info("Parse and Decode frame idx = {}", pkt_idx);
+
+    auto t_0 = std::chrono::high_resolution_clock::now();
+
     ret = av_parser_parse2(parser, decoder_context, &decode_pkt->data,
                            &decode_pkt->size, pkt_data.data(), pkt_data.size(),
                            AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0);
+    auto t_1 = std::chrono::high_resolution_clock::now();
 
     if (ret < 0) {
       spdlog::error("Error while parsing packet idx = {}", pkt_idx);
@@ -466,9 +473,12 @@ int main(int argc, char **argv) {
       spdlog::error("Parsed unfinished packet idx = {}", pkt_idx);
       break;
     } else {
+      auto t_2 = std::chrono::high_resolution_clock::now();
+
       decode(decoder_context, decoded_frame, decode_pkt);
       spdlog::info("Decoded frame {}, type = {}", pkt_idx,
                    decoded_frame->pict_type);
+      auto t_3 = std::chrono::high_resolution_clock::now();
 
       cv::Mat image(decoded_frame->height * 3 / 2, decoded_frame->width,
                     CV_8UC1);
@@ -495,6 +505,7 @@ int main(int argc, char **argv) {
                     decoded_frame->data[2] + row * decoded_frame->linesize[2],
                     decoded_frame->width / 2);
       }
+      auto t_4 = std::chrono::high_resolution_clock::now();
 
       // // Get The AVFrame with image data using av_image_copy_to_buffer.
       // // Use the same alignment as the encoder (32).
@@ -507,6 +518,25 @@ int main(int argc, char **argv) {
 
       cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
       cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+      auto t_5 = std::chrono::high_resolution_clock::now();
+
+      auto t_parse_packet =
+          std::chrono::duration_cast<std::chrono::microseconds>(t_1 - t_0)
+              .count();
+      auto t_decode =
+          std::chrono::duration_cast<std::chrono::microseconds>(t_3 - t_2)
+              .count();
+      auto t_get_frame =
+          std::chrono::duration_cast<std::chrono::microseconds>(t_4 - t_3)
+              .count();
+      auto t_convert_color =
+          std::chrono::duration_cast<std::chrono::microseconds>(t_5 - t_4)
+              .count();
+
+      spdlog::debug(
+          "t parse packet = {} us, t decode = {} us, t get frame = {} us, t "
+          "convert color = {} us.",
+          t_parse_packet, t_decode, t_get_frame, t_convert_color);
 
       // Calculate quality metrics
       auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
