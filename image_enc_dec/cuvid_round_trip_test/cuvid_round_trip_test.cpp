@@ -10,6 +10,7 @@
 #include <opencv4/opencv2/quality.hpp>
 #include <string>
 
+#include "NvDecoder/NvDecoder.h"
 #include "NvEncoder/NvEncoderCuda.h"
 #include "NvEncoderCLIOptions.h"
 
@@ -142,7 +143,7 @@ int main(int argc, char** argv) {
       (static_cast<unsigned int>(5.0f * initializeParams.encodeWidth *
                                  initializeParams.encodeHeight) /
        (1280 * 720)) *
-      1000000;
+      10000000;
   encodeConfig.rcParams.vbvBufferSize =
       (encodeConfig.rcParams.averageBitRate * initializeParams.frameRateDen /
        initializeParams.frameRateNum) *
@@ -198,10 +199,96 @@ int main(int argc, char** argv) {
       return 1;
     } else {
       spdlog::info("Got packet size = {} bytes", vPacket.back().size());
+      encoded_packets.push_back(std::move(vPacket.back()));
     }
   }
+
+  int total_packet_size = 0;
+  for (const auto& pkt_data : encoded_packets) {
+    total_packet_size += pkt_data.size();
+  }
+
+  int bgr_data_size = 3 * img_width * img_height;
+  int total_bgr_data_size = encoded_packets.size() * bgr_data_size;
+  double compression_ratio = static_cast<double>(total_packet_size) /
+                             static_cast<double>(total_bgr_data_size);
+  spdlog::info(
+      "Number of Encoded packets = {} , Total packet size = {} bytes, Total "
+      "Raw BGR(8bit) size = {}, Compression Ratio = {}. ",
+      encoded_packets.size(), total_packet_size, total_bgr_data_size,
+      compression_ratio);
+
   encoder.EndEncode(vPacket);
   encoder.DestroyEncoder();
+
+  NvDecoder decoder(cuContext, false, cudaVideoCodec_H264, true, false, NULL,
+                    NULL, false, 0, 0, 1000, false);
+
+  int pkt_idx = 0;
+  double mse_r = 0.0;
+  double mse_g = 0.0;
+  double mse_b = 0.0;
+  double psnr_r = 0.0;
+  double psnr_g = 0.0;
+  double psnr_b = 0.0;
+  int nFrameReturned = 0;
+  int64_t timestamp = 0;
+  for (auto& pkt_data : encoded_packets) {
+    nFrameReturned = 0;
+    nFrameReturned = decoder.Decode(pkt_data.data(), pkt_data.size(),
+                                    CUVID_PKT_ENDOFPICTURE, pkt_idx);
+
+    if (nFrameReturned == 0) {
+      spdlog::error("No frame returned from decoder.");
+      return 1;
+    } else if (nFrameReturned > 1) {
+      spdlog::error("More than one frame is returned from decoder.");
+      return 1;
+    }
+    cv::Mat img_iyuv(img_height * 3 / 2, img_width, CV_8UC1);
+
+    std::memcpy(img_iyuv.data, decoder.GetFrame(&timestamp),
+                decoder.GetFrameSize());
+
+    spdlog::info(" Frame idx {} , frame size = {}", pkt_idx,
+                 decoder.GetFrameSize());
+
+    cv::Mat image_bgr(img_height, img_width, CV_8UC3);
+    cv::cvtColor(img_iyuv, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+    auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
+                                                image_bgr, cv::noArray());
+    auto psnr = cv::quality::QualityPSNR::compute(original_bgr_images[pkt_idx],
+                                                  image_bgr, cv::noArray());
+
+    mse_b += mse[0];
+    mse_g += mse[1];
+    mse_r += mse[2];
+
+    psnr_b += psnr[0];
+    psnr_g += psnr[1];
+    psnr_r += psnr[2];
+
+    if (save_output) {
+      auto output_path = output_dir / image_paths[pkt_idx].filename();
+      cv::imwrite(output_path, image_bgr);
+      // spdlog::info("Saved Image to :{}", output_path.string());
+    }
+
+    pkt_idx++;
+  }
+
+  mse_b /= encoded_packets.size();
+  mse_g /= encoded_packets.size();
+  mse_r /= encoded_packets.size();
+
+  psnr_b /= encoded_packets.size();
+  psnr_g /= encoded_packets.size();
+  psnr_r /= encoded_packets.size();
+
+  spdlog::info("Average Image quality scores:");
+  spdlog::info("BGR MSE (Lower is better) = [{}, {}, {}]", mse_b, mse_g, mse_r);
+  spdlog::info("BGR PSNR (Should be ~30-50dB, higher is better) = [{}, {}, {}]",
+               psnr_b, psnr_g, psnr_r);
 
   return 0;
 }

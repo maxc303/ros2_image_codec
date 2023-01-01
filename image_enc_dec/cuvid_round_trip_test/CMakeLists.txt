@@ -30,12 +30,22 @@ set(NV_ENC_SOURCES
  ${NV_ENC_DIR}/NvEncoderCuda.cpp
 )
 
+set(NV_DEC_SOURCES
+  ${NV_DEC_DIR}/NvDecoder.cpp
+)
 set(NV_ENC_HDRS
  ${NV_ENC_DIR}/NvEncoder.h
  ${NV_ENC_DIR}/NvEncoderCuda.h
  ${NVCODEC_PUBLIC_INTERFACE_DIR}/nvEncodeAPI.h
  ${NVCODEC_UTILS_DIR}/NvCodecUtils.h
  ${NVCODEC_UTILS_DIR}/NvEncoderCLIOptions.h
+)
+
+set(NV_DEC_HDRS
+ ${NV_DEC_DIR}/NvDecoder.h
+ ${NVCODEC_PUBLIC_INTERFACE_DIR}/cuviddec.h
+ ${NVCODEC_PUBLIC_INTERFACE_DIR}/nvcuvid.h
+ ${NVCODEC_UTILS_DIR}/NvCodecUtils.h
 )
 
 
@@ -49,7 +59,7 @@ if ( CMAKE_COMPILER_IS_GNUCC )
 endif()
 
 
-cuda_add_library(video_codec_sample ${NV_ENC_SOURCES} ${NV_ENC_CUDA_UTILS} ${NV_ENC_HDRS})
+cuda_add_library(video_codec_sample ${NV_ENC_SOURCES}  ${NV_DEC_SOURCES}  ${NV_ENC_CUDA_UTILS} ${NV_ENC_HDRS}  ${NV_DEC_HDRS})
 set_target_properties(video_codec_sample PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 target_include_directories(video_codec_sample PUBLIC ${CUDA_INCLUDE_DIRS}
