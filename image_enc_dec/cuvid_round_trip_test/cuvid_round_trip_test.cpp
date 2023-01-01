@@ -126,7 +126,11 @@ int main(int argc, char** argv) {
 
   NV_ENC_INITIALIZE_PARAMS initializeParams = {NV_ENC_INITIALIZE_PARAMS_VER};
   NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
+  encodeConfig.rcParams.zeroReorderDelay = 1;
+
   initializeParams.encodeConfig = &encodeConfig;
+  initializeParams.enablePTD = 0;
+
   encoder.CreateDefaultEncoderParams(
       &initializeParams, NV_ENC_CODEC_H264_GUID, NV_ENC_PRESET_P4_GUID,
       NV_ENC_TUNING_INFO_LOW_LATENCY);  // NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY
@@ -136,14 +140,9 @@ int main(int argc, char** argv) {
   encodeConfig.encodeCodecConfig.h264Config.idrPeriod =
       NVENC_INFINITE_GOPLENGTH;
 
-  encodeConfig.rcParams.zeroReorderDelay = 1;
   encodeConfig.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
   encodeConfig.rcParams.multiPass = NV_ENC_TWO_PASS_FULL_RESOLUTION;
-  encodeConfig.rcParams.averageBitRate =
-      (static_cast<unsigned int>(5.0f * initializeParams.encodeWidth *
-                                 initializeParams.encodeHeight) /
-       (1280 * 720)) *
-      10000000;
+  encodeConfig.rcParams.averageBitRate = 10000000;
   encodeConfig.rcParams.vbvBufferSize =
       (encodeConfig.rcParams.averageBitRate * initializeParams.frameRateDen /
        initializeParams.frameRateNum) *
@@ -152,8 +151,11 @@ int main(int argc, char** argv) {
   encodeConfig.rcParams.vbvInitialDelay = encodeConfig.rcParams.vbvBufferSize;
 
   initializeParams.bufferFormat = NV_ENC_BUFFER_FORMAT_IYUV;
-  encoder.CreateEncoder(&initializeParams);
+  NvEncoderInitParam encodeCLIOptions;
 
+  encodeCLIOptions.SetInitParams(&initializeParams, NV_ENC_BUFFER_FORMAT_IYUV);
+
+  encoder.CreateEncoder(&initializeParams);
   int nFrameSize = encoder.GetFrameSize();
   std::unique_ptr<uint8_t[]> pHostFrame(new uint8_t[nFrameSize]);
   std::vector<std::vector<uint8_t>> encoded_packets;
@@ -182,7 +184,6 @@ int main(int argc, char** argv) {
     cv::cvtColor(img, img_iyuv, cv::COLOR_BGR2YUV_I420);
 
     const NvEncInputFrame* encoderInputFrame = encoder.GetNextInputFrame();
-
     NvEncoderCuda::CopyToDeviceFrame(
         cuContext, img_iyuv.data, 0, (CUdeviceptr)encoderInputFrame->inputPtr,
         (int)encoderInputFrame->pitch, encoder.GetEncodeWidth(),
@@ -193,7 +194,6 @@ int main(int argc, char** argv) {
     encoder.EncodeFrame(vPacket, &picParams);
     if (vPacket.size() == 0) {
       spdlog::error("Didn't get input packet from the encoded frame");
-      return 1;
     } else if (vPacket.size() > 1) {
       spdlog::error("Got more than 1 packet from one input frame.");
       return 1;
@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
   encoder.DestroyEncoder();
 
   NvDecoder decoder(cuContext, false, cudaVideoCodec_H264, true, false, NULL,
-                    NULL, false, 0, 0, 1000, false);
+                    NULL, false, 0, 0, 1000, true);
 
   int pkt_idx = 0;
   double mse_r = 0.0;
@@ -247,14 +247,28 @@ int main(int argc, char** argv) {
     }
     cv::Mat img_iyuv(img_height * 3 / 2, img_width, CV_8UC1);
 
-    std::memcpy(img_iyuv.data, decoder.GetFrame(&timestamp),
-                decoder.GetFrameSize());
+    auto decoded_frame_data = decoder.GetFrame(&timestamp);
+    auto decoded_frame_size = decoder.GetFrameSize();
 
-    spdlog::info(" Frame idx {} , frame size = {}", pkt_idx,
+    // std::memcpy(img_iyuv.data, decoded_frame_data, decoded_frame_size);
+
+    int y_ch_size = img_width * img_height;
+    int uv_ch_size = y_ch_size / 4;
+    std::vector<uint8_t> y_data(y_ch_size, 0);
+    std::vector<uint8_t> u_data(uv_ch_size, 0);
+    std::vector<uint8_t> v_data(uv_ch_size, 0);
+
+    std::memcpy(img_iyuv.data, decoded_frame_data, y_ch_size);
+    std::memcpy(img_iyuv.data + y_ch_size, decoded_frame_data + y_ch_size,
+                uv_ch_size);
+    std::memcpy(img_iyuv.data + y_ch_size + uv_ch_size,
+                decoded_frame_data + y_ch_size + uv_ch_size, uv_ch_size);
+    spdlog::info("Frame idx {}, frame size = {}", pkt_idx,
                  decoder.GetFrameSize());
 
-    cv::Mat image_bgr(img_height, img_width, CV_8UC3);
-    cv::cvtColor(img_iyuv, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+    cv::Mat image_bgr(img_height, img_width, CV_8UC3, 3);
+    cv::cvtColor(img_iyuv, image_bgr, cv::COLOR_YUV2BGR_I420);
+
     auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
                                                 image_bgr, cv::noArray());
     auto psnr = cv::quality::QualityPSNR::compute(original_bgr_images[pkt_idx],
