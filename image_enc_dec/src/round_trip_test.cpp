@@ -295,6 +295,8 @@ int main(int argc, char **argv) {
     }
 
     ret = av_frame_make_writable(input_frame);
+
+    size_t sizes[4];
     if (ret < 0) {
       spdlog::error("Could not make the frame writable: err =",
                     av_err2str(ret));
@@ -314,21 +316,27 @@ int main(int argc, char **argv) {
     int uv_channel_size = img.size().width * img.size().height / 4;
     auto t_2 = std::chrono::high_resolution_clock::now();
 
-    // Manually Copy input data to frame buffer
-    std::memcpy(input_frame->data[0], img_yuv420p.data, y_channel_size);
-    std::memcpy(input_frame->data[1], img_yuv420p.data + y_channel_size,
-                uv_channel_size);
-    std::memcpy(input_frame->data[2],
-                img_yuv420p.data + y_channel_size + uv_channel_size,
-                uv_channel_size);
-    auto t_3 = std::chrono::high_resolution_clock::now();
+    // input_frame->data[0] = img_yuv420p.data;
+    // input_frame->data[1] = img_yuv420p.data + y_channel_size;
+    // input_frame->data[2] = img_yuv420p.data + y_channel_size +
+    // uv_channel_size;
 
-    // // Fill The AVFrame with image data using av_image_fill_arrays .
-    // // Set the alignment to 32.
-    // av_image_fill_arrays(input_frame->data, input_frame->linesize,
-    //                      img_yuv420p.data,
-    //                      static_cast<AVPixelFormat>(input_frame->format),
-    //                      img.size().width, img.size().height, 32);
+    // Manually Copy input data to frame buffer
+    // std::memcpy(input_frame->data[0], img_yuv420p.data, y_channel_size);
+    // std::memcpy(input_frame->data[1], img_yuv420p.data + y_channel_size,
+    //             uv_channel_size);
+    // std::memcpy(input_frame->data[2],
+    //             img_yuv420p.data + y_channel_size + uv_channel_size,
+    //             uv_channel_size);
+
+    // Fill The AVFrame with image data using av_image_fill_arrays .
+    // Set the alignment to 32.
+    av_image_fill_arrays(input_frame->data, input_frame->linesize,
+                         img_yuv420p.data,
+                         static_cast<AVPixelFormat>(input_frame->format),
+                         img.size().width, img.size().height, 32);
+
+    auto t_3 = std::chrono::high_resolution_clock::now();
 
     // frame timestamp = pts * timebase
     input_frame->pts = frame_idx;
@@ -476,6 +484,12 @@ int main(int argc, char **argv) {
       auto t_2 = std::chrono::high_resolution_clock::now();
 
       decode(decoder_context, decoded_frame, decode_pkt);
+
+      if (decoded_frame->format == -1) {
+        spdlog::warn("Skip frame in decoding {}: ", pkt_idx);
+
+        continue;
+      }
       spdlog::info("Decoded frame {}, type = {}", pkt_idx,
                    decoded_frame->pict_type);
       auto t_3 = std::chrono::high_resolution_clock::now();
@@ -486,35 +500,34 @@ int main(int argc, char **argv) {
       int uv_channel_size = decoded_frame->width * decoded_frame->height / 4;
       int image_data_size = y_channel_size + 2 * uv_channel_size;
 
-      // Manually Copy Frame data to cv::Mat
-      // Y channel
-      for (int row = 0; row < decoded_frame->height; row++) {
-        std::memcpy(image.data + row * decoded_frame->width,
-                    decoded_frame->data[0] + row * decoded_frame->linesize[0],
-                    decoded_frame->width);
-      }
+      // // Manually Copy Frame data to cv::Mat
+      // // Y channel
+      // for (int row = 0; row < decoded_frame->height; row++) {
+      //   std::memcpy(image.data + row * decoded_frame->width,
+      //               decoded_frame->data[0] + row *
+      //               decoded_frame->linesize[0], decoded_frame->width);
+      // }
 
-      // UV channels
-      for (int row = 0; row < decoded_frame->height / 2; row++) {
-        std::memcpy(
-            image.data + y_channel_size + row * decoded_frame->width / 2,
-            decoded_frame->data[1] + row * decoded_frame->linesize[1],
-            decoded_frame->width / 2);
-        std::memcpy(image.data + y_channel_size + uv_channel_size +
-                        row * decoded_frame->width / 2,
-                    decoded_frame->data[2] + row * decoded_frame->linesize[2],
-                    decoded_frame->width / 2);
-      }
-      auto t_4 = std::chrono::high_resolution_clock::now();
+      // // UV channels
+      // for (int row = 0; row < decoded_frame->height / 2; row++) {
+      //   std::memcpy(
+      //       image.data + y_channel_size + row * decoded_frame->width / 2,
+      //       decoded_frame->data[1] + row * decoded_frame->linesize[1],
+      //       decoded_frame->width / 2);
+      //   std::memcpy(image.data + y_channel_size + uv_channel_size +
+      //                   row * decoded_frame->width / 2,
+      //               decoded_frame->data[2] + row *
+      //               decoded_frame->linesize[2], decoded_frame->width / 2);
+      // }
 
       // // Get The AVFrame with image data using av_image_copy_to_buffer.
       // // Use the same alignment as the encoder (32).
-      // av_image_copy_to_buffer(image.data, image_data_size,
-      // decoded_frame->data,
-      //                         decoded_frame->linesize,
-      //                         static_cast<AVPixelFormat>(decoded_frame->format),
-      //                         decoded_frame->width, decoded_frame->height,
-      //                         32);
+      av_image_copy_to_buffer(image.data, image_data_size, decoded_frame->data,
+                              decoded_frame->linesize,
+                              static_cast<AVPixelFormat>(decoded_frame->format),
+                              decoded_frame->width, decoded_frame->height, 32);
+
+      auto t_4 = std::chrono::high_resolution_clock::now();
 
       cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
       cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
@@ -555,7 +568,7 @@ int main(int argc, char **argv) {
       if (save_output) {
         auto output_path = output_dir / image_paths[pkt_idx].filename();
         cv::imwrite(output_path, image_bgr);
-        // spdlog::info("Saved Image to :{}", output_path.string());
+        spdlog::debug("Saved Image to :{}", output_path.string());
       }
     }
     pkt_idx++;
@@ -579,5 +592,6 @@ int main(int argc, char **argv) {
   av_frame_free(&decoded_frame);
   av_packet_free(&decode_pkt);
 
+  spdlog::info("CPU max align= {}", av_cpu_max_align());
   return 0;
 }
