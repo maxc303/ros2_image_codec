@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(image_enc_dec)
+project(ros2_image_codec)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -11,55 +11,36 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-set(PC_AVCODEC_LIBDIR /usr/lib/x86_64-linux-gnu/)
-set(PC_AVFORMAT_LIBDIR /usr/lib/x86_64-linux-gnu/)
-set(PC_AVUTIL_LIBDIR /usr/lib/x86_64-linux-gnu/)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
+    libavformat
+    libavcodec
+    libavutil
+)
 
-# FFmpeg libraries
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    find_library(AVCODEC_LIBRARY NAMES avcodec
-            HINTS
-            ${PC_AVCODEC_LIBDIR}
-            )
-
-    if(NOT AVCODEC_LIBRARY )
-      message(FATAL_ERROR "avcodec library not found")
-    endif()
-    find_library(AVFORMAT_LIBRARY NAMES avformat
-            HINTS
-            ${PC_AVFORMAT_LIBDIR}
-            )
-    find_library(AVUTIL_LIBRARY NAMES avutil
-            HINTS
-            ${PC_AVUTIL_LIBDIR}
-            )
-endif()
-
-add_library(ffmpeg_encoder src/lib-ffmpeg_enc_dec/ffmpeg_encoder.cpp)
-target_include_directories(ffmpeg_encoder PUBLIC include)
-
+add_library(image_codec lib_image_codec/ffmpeg_encoder.cpp)
+target_include_directories(image_codec PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:include>)
 
 find_package(Boost COMPONENTS program_options REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(spdlog REQUIRED)
 
-add_executable(round_trip_test src/round_trip_test.cpp)
+add_executable(round_trip_test tests/round_trip_test.cpp)
 target_link_libraries(round_trip_test
   spdlog::spdlog
   ${OpenCV_LIBRARIES}
   ${Boost_LIBRARIES}
-  ${AVCODEC_LIBRARY}
-  ${AVFORMAT_LIBRARY}
-  ${AVUTIL_LIBRARY}
+  PkgConfig::LIBAV
 )
 
-
-add_executable(encoder_node src/encoder_node.cpp)
+add_executable(encoder_node codec_nodes/encoder_node.cpp)
 target_include_directories(encoder_node PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(encoder_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-target_link_libraries(encoder_node ffmpeg_encoder)
+target_link_libraries(encoder_node image_codec)
 
 install(TARGETS encoder_node
   DESTINATION lib/${PROJECT_NAME})

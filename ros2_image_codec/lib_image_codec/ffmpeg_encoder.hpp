@@ -1,5 +1,5 @@
-#ifndef IMAGE_ENC_DEC__FFMPEG_ENCODER_HPP
-#define IMAGE_ENC_DEC__FFMPEG_ENCODER_HPP
+#ifndef IMAGE_CODEC__FFMPEG_ENCODER_HPP
+#define IMAGE_CODEC__FFMPEG_ENCODER_HPP
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -9,7 +9,7 @@ extern "C" {
 #include <chrono>
 #include <string>
 #include <vector>
-namespace ffmpeg_encoder {
+namespace image_codec {
 
 struct EncoderParams {
   std::string name;
@@ -29,8 +29,10 @@ struct Packet {
 class Encoder {
  public:
   void test();
-  Encoder(EncoderParams params){};
-  Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts){};
+  Encoder(EncoderParams params);
+  Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts) {
+    return Packet{};
+  };
 
  private:
   const AVCodec* encoder_;
@@ -38,6 +40,6 @@ class Encoder {
   AVPacket* output_packet_;
 };
 
-}  // namespace ffmpeg_encoder
+}  // namespace image_codec
 
-#endif  // IMAGE_ENC_DEC__FFMPEG_ENCODER_HPP
+#endif  // IMAGE_CODEC__FFMPEG_ENCODER_HPP
