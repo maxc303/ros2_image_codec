@@ -1,10 +1,9 @@
-#include "lib_image_codec/ffmpeg_encoder.hpp"
-
 #include <iostream>
+#include <lib_image_codec/ffmpeg_encoder.hpp>
 
 namespace image_codec {
 
-void Encoder::test() { std::cout << "test" << std::endl; }
+void FFmpegEncoder::test() { std::cout << "test" << std::endl; }
 
-Encoder::Encoder(EncoderParams params) {}
+FFmpegEncoder::FFmpegEncoder(EncoderParams params) {}
 }  // namespace image_codec

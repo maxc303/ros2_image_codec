@@ -7,29 +7,15 @@ extern "C" {
 #include <libavutil/imgutils.h>
 }
 #include <chrono>
+#include <lib_image_codec/i_encoder.hpp>
 #include <string>
 #include <vector>
 namespace image_codec {
 
-struct EncoderParams {
-  std::string name;
-  int bit_rate;
-  int width;
-  int height;
-  int gop_size;
-};
-
-struct Packet {
-  std::vector<uint8_t> data;
-
-  // Timestamped to check previous frame.
-  std::chrono::nanoseconds previous_frame_ts;
-};
-
-class Encoder {
+class FFmpegEncoder : public IEncoder {
  public:
   void test();
-  Encoder(EncoderParams params);
+  FFmpegEncoder(EncoderParams params);
   Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts) {
     return Packet{};
   };

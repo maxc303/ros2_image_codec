@@ -5,7 +5,7 @@ int main(int argc, char** argv) {
   (void)argv;
 
   image_codec::EncoderParams encoder_params;
-  image_codec::Encoder encoder(encoder_params);
+  image_codec::FFmpegEncoder encoder(encoder_params);
   encoder.test();
   printf("hello world image_enc_dec package\n");
   return 0;

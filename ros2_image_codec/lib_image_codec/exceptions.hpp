@@ -1,5 +1,5 @@
-#ifndef IMAGE_CODEC__ENCODER_EXCEPTION_HPP
-#define IMAGE_CODEC__ENCODER_EXCEPTION_HPP
+#ifndef LIB_IMAGE_CODEC__ENCODER_EXCEPTION_HPP
+#define LIB_IMAGE_CODEC__ENCODER_EXCEPTION_HPP
 
 #include <exception>
 #include <string>
@@ -17,4 +17,4 @@ class EncoderException : public std::exception {
 };
 }  // namespace image_codec
 
-#endif  // IMAGE_CODEC__ENCODER_EXCEPTION_HPP
+#endif  // LIB_IMAGE_CODEC__ENCODER_EXCEPTION_HPP
