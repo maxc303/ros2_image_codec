@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
        "FFmpeg decoder name")  //
       ("num_images", po::value<int>()->default_value(10),
        "number of images to be used in this test")  //
-      ("bit_rate", po::value<int>()->default_value(5000000),
+      ("crf", po::value<int>()->default_value(23),
        "encoder bit rate")  //
       ("gop_size", po::value<int>()->default_value(10),
        "Encoder Group of Pictures size.  Emit one intra frame in each group.");
@@ -160,9 +160,10 @@ int main(int argc, char **argv) {
   int max_num_images = boost_args["num_images"].as<int>();
   std::string encoder_name = boost_args["encoder"].as<std::string>();
   std::string decoder_name = boost_args["decoder"].as<std::string>();
-  int bit_rate = boost_args["bit_rate"].as<int>();
+  int crf = boost_args["crf"].as<int>();
   int gop_size = boost_args["gop_size"].as<int>();
-  spdlog::info("Using encoder:{} and decoder:{}.", encoder_name, decoder_name);
+  spdlog::info("Using encoder:{} and decoder:{}. crf = {}", encoder_name,
+               decoder_name, crf);
 
   // Get the image path for the test.
   std::vector<std::filesystem::path> image_paths;
@@ -220,8 +221,6 @@ int main(int argc, char **argv) {
   encoder_context->width = init_image.size().width;
   encoder_context->height = init_image.size().height;
 
-  encoder_context->bit_rate = bit_rate;
-
   // Give encoder a random time_base and framerate.
   encoder_context->time_base = (AVRational){1, 10};
   encoder_context->framerate = (AVRational){10, 1};
@@ -239,14 +238,20 @@ int main(int argc, char **argv) {
   if (encoder_name == "h264_nvenc" || encoder_name == "hevc_nvenc") {
     av_opt_set(encoder_context->priv_data, "zerolatency", "1", 0);
     av_opt_set(encoder_context->priv_data, "delay", "0", 0);
-    if (bit_rate == 0) {
+    if (crf == 0) {
       av_opt_set(encoder_context->priv_data, "tune", "lossless", 0);
+    } else {
+      av_opt_set(encoder_context->priv_data, "cq", std::to_string(crf).c_str(),
+                 0);
     }
 
   } else if (encoder_name == "libx264" || encoder_name == "libx265") {
     av_opt_set(encoder_context->priv_data, "tune", "zerolatency", 0);
-    if (bit_rate == 0) {
+    if (crf == 0) {
       av_opt_set(encoder_context->priv_data, "crf", "0", 0);
+    } else {
+      av_opt_set(encoder_context->priv_data, "crf", std::to_string(crf).c_str(),
+                 0);
     }
   }
 
@@ -268,7 +273,6 @@ int main(int argc, char **argv) {
   input_frame->format = encoder_context->pix_fmt;
   input_frame->width = encoder_context->width;
   input_frame->height = encoder_context->height;
-
   // Get input frame buffer
   ret = av_frame_get_buffer(input_frame, 0);
   if (ret < 0) {
@@ -490,8 +494,9 @@ int main(int argc, char **argv) {
 
         continue;
       }
-      spdlog::info("Decoded frame {}, type = {}", pkt_idx,
-                   decoded_frame->pict_type);
+      spdlog::info("Decoded frame {}, size = {}, type = {}, keyframe = {}",
+                   pkt_idx, pkt_data.size(), decoded_frame->pict_type,
+                   decoded_frame->key_frame ? "true" : "false");
       auto t_3 = std::chrono::high_resolution_clock::now();
 
       cv::Mat image(decoded_frame->height * 3 / 2, decoded_frame->width,
@@ -520,8 +525,8 @@ int main(int argc, char **argv) {
       //               decoded_frame->linesize[2], decoded_frame->width / 2);
       // }
 
-      // // Get The AVFrame with image data using av_image_copy_to_buffer.
-      // // Use the same alignment as the encoder (32).
+      // Get The AVFrame with image data using av_image_copy_to_buffer.
+      // Use the same alignment as the encoder (32).
       av_image_copy_to_buffer(image.data, image_data_size, decoded_frame->data,
                               decoded_frame->linesize,
                               static_cast<AVPixelFormat>(decoded_frame->format),
@@ -530,7 +535,20 @@ int main(int argc, char **argv) {
       auto t_4 = std::chrono::high_resolution_clock::now();
 
       cv::Mat image_bgr(decoded_frame->height, decoded_frame->width, CV_8UC3);
-      cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+
+      if (static_cast<AVPixelFormat>(decoded_frame->format) ==
+          AVPixelFormat::AV_PIX_FMT_YUV420P) {
+        cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_I420, 3);
+      } else if (static_cast<AVPixelFormat>(decoded_frame->format ==
+                                            AVPixelFormat::AV_PIX_FMT_NV12)) {
+        cv::cvtColor(image, image_bgr, cv::COLOR_YUV2BGR_NV12, 3);
+      } else {
+        spdlog::error(
+            "Decoded image with AVPixelFormat=[] to OpenCV conversion is not "
+            "implemented in this script.",
+            decoded_frame->format);
+      }
+
       auto t_5 = std::chrono::high_resolution_clock::now();
 
       auto t_parse_packet =
@@ -592,6 +610,5 @@ int main(int argc, char **argv) {
   av_frame_free(&decoded_frame);
   av_packet_free(&decode_pkt);
 
-  spdlog::info("CPU max align= {}", av_cpu_max_align());
   return 0;
 }

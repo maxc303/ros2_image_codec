@@ -1,6 +1,7 @@
 #include <image_enc_dec/ffmpeg_encoder.hpp>
 #include <iostream>
-namespace image_enc_dec {
+
+namespace ffmpeg_encoder {
 
 void Encoder::test() { std::cout << "test" << std::endl; }
-}  // namespace image_enc_dec
+}  // namespace ffmpeg_encoder
