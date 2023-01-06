@@ -12,6 +12,7 @@ namespace image_codec {
 void FFmpegEncoder::test() { std::cout << "test" << std::endl; }
 
 FFmpegEncoder::FFmpegEncoder(EncoderParams params) {
+  cpu_max_align_ = av_cpu_max_align();
   encoder_ = avcodec_find_encoder_by_name(params.encoder_name.c_str());
   if (!encoder_) {
     throw EncoderException("libavcodec Encoder '" + params.encoder_name +
@@ -33,13 +34,13 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params) {
   encoder_context_->pix_fmt = AV_PIX_FMT_YUV420P;
 
   // Settings to enable one-in-one-out
-  if (encoder_->name == "libx264") {
+  if (params.encoder_name == "libx264") {
     // enable one-in-one-out
     av_opt_set(encoder_context_->priv_data, "tune", "zerolatency", 0);
     av_opt_set(encoder_context_->priv_data, "crf",
                std::to_string(params.crf).c_str(), 0);
 
-  } else if (encoder_->name == "h264_nvenc") {
+  } else if (params.encoder_name == "h264_nvenc") {
     // enable one-in-one-out
     av_opt_set(encoder_context_->priv_data, "zerolatency", "1", 0);
 
@@ -57,21 +58,27 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params) {
         "libavcodec Could not allocate encoder output packet.");
   }
 
-  int avcodec_return;
-  avcodec_return = avcodec_open2(encoder_context_, encoder_, nullptr);
-  if (avcodec_return < 0) {
-    throw EncoderException("libavcodec Could not open encoder. Error type: " +
-                           av_err2string(avcodec_return));
-  }
+  CHECK_LIBAV_ERROR(avcodec_open2(encoder_context_, encoder_, nullptr))
 
+  init_input_frame();
+}
+
+void FFmpegEncoder::init_input_frame() {
+  int avcodec_return;
   input_frame_ = av_frame_alloc();
   if (!input_frame_) {
     throw EncoderException("libavcodec Could not allocate input frame.");
   }
-
   input_frame_->format = encoder_context_->pix_fmt;
   input_frame_->width = encoder_context_->width;
   input_frame_->height = encoder_context_->height;
+
+  CHECK_LIBAV_ERROR(
+      av_image_check_size(input_frame_->width, input_frame_->height, 0, NULL))
+
+  CHECK_LIBAV_ERROR(av_image_fill_linesizes(
+      input_frame_->linesize, static_cast<AVPixelFormat>(input_frame_->format),
+      FFALIGN(input_frame_->width, cpu_max_align_)))
 }
 
 Packet FFmpegEncoder::encode(uint8_t* input_data,

@@ -26,11 +26,14 @@ class FFmpegEncoder : public IEncoder {
   Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts);
 
  private:
+  void init_input_frame();
   const AVCodec* encoder_;
   AVCodecContext* encoder_context_;
   AVFrame* input_frame_;
   AVPacket* output_packet_;
   int dts = 0;
+
+  int cpu_max_align_;
 };
 
 }  // namespace image_codec

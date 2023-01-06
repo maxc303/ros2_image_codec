@@ -5,6 +5,7 @@ FROM osrf/ros:humble-desktop-jammy
 # install ros2 packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-desktop-full=0.10.0-1* \
+    ros-humble-ament-cmake-catch2 \
     && rm -rf /var/lib/apt/lists/*
 
 # install other tools
