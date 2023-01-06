@@ -8,11 +8,11 @@
 namespace image_codec {
 
 struct EncoderParams {
-  std::string name;
-  int bit_rate;
+  std::string encoder_name;
+  int gop_size;
   int width;
   int height;
-  int gop_size;
+  int crf = 23;
 };
 
 struct Packet {

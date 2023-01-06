@@ -6,6 +6,11 @@
 
 namespace image_codec {
 
+std::string av_err2string(int errnum) {
+  char str[AV_ERROR_MAX_STRING_SIZE];
+  return av_make_error_string(str, AV_ERROR_MAX_STRING_SIZE, errnum);
+}
+
 class EncoderException : public std::exception {
  public:
   explicit EncoderException(const std::string& msg) : msg_(msg) {}

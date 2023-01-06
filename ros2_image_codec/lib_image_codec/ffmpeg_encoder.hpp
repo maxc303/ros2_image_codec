@@ -16,14 +16,21 @@ class FFmpegEncoder : public IEncoder {
  public:
   void test();
   FFmpegEncoder(EncoderParams params);
-  Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts) {
-    return Packet{};
-  };
+
+  FFmpegEncoder(const FFmpegEncoder&) = delete;
+  FFmpegEncoder& operator=(const FFmpegEncoder&) = delete;
+  FFmpegEncoder(FFmpegEncoder&&) = default;
+  FFmpegEncoder& operator=(FFmpegEncoder&&) = default;
+
+  ~FFmpegEncoder();
+  Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts);
 
  private:
   const AVCodec* encoder_;
+  AVCodecContext* encoder_context_;
   AVFrame* input_frame_;
   AVPacket* output_packet_;
+  int dts = 0;
 };
 
 }  // namespace image_codec

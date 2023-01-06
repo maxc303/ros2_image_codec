@@ -19,6 +19,10 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
 )
 
 add_library(image_codec lib_image_codec/ffmpeg_encoder.cpp)
+target_link_libraries(image_codec 
+  PkgConfig::LIBAV
+  spdlog::spdlog
+)
 target_include_directories(image_codec PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>)
