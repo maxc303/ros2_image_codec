@@ -23,7 +23,7 @@ class FFmpegEncoder : public IEncoder {
   FFmpegEncoder& operator=(FFmpegEncoder&&) = default;
 
   ~FFmpegEncoder();
-  Packet encode(uint8_t* input_data, std::chrono::nanoseconds frame_ts);
+  Packet encode(uint8_t* input_data, size_t data_size) override;
 
  private:
   void init_input_frame();
@@ -31,7 +31,7 @@ class FFmpegEncoder : public IEncoder {
   AVCodecContext* encoder_context_;
   AVFrame* input_frame_;
   AVPacket* output_packet_;
-  int dts = 0;
+  int pts_ = 0;
 
   int cpu_max_align_;
 };

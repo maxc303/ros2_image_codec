@@ -18,6 +18,7 @@ struct EncoderParams {
 struct Packet {
   std::vector<uint8_t> data;
 
+  bool is_key = false;
   // Timestamped to check previous frame.
   std::chrono::nanoseconds previous_frame_ts;
 };
@@ -26,8 +27,7 @@ class IEncoder {
  public:
   virtual ~IEncoder() = default;
 
-  virtual Packet encode(uint8_t* input_data,
-                        std::chrono::nanoseconds frame_ts) = 0;
+  virtual Packet encode(uint8_t* input_data, size_t data_size) = 0;
 };
 
 }  // namespace image_codec
