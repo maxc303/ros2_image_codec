@@ -11,11 +11,12 @@ namespace image_codec {
 
 void FFmpegEncoder::test() { std::cout << "test" << std::endl; }
 
-FFmpegEncoder::FFmpegEncoder(EncoderParams params) {
+FFmpegEncoder::FFmpegEncoder(EncoderParams params)
+    : params_(std::move(params)) {
   cpu_max_align_ = av_cpu_max_align();
-  encoder_ = avcodec_find_encoder_by_name(params.encoder_name.c_str());
+  encoder_ = avcodec_find_encoder_by_name(params_.encoder_name.c_str());
   if (!encoder_) {
-    throw EncoderException("libavcodec Encoder '" + params.encoder_name +
+    throw EncoderException("libavcodec Encoder '" + params_.encoder_name +
                            "' not found.");
   }
 
@@ -27,28 +28,28 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params) {
   encoder_context_->time_base = AVRational{1, 1};
   encoder_context_->framerate = AVRational{1, 1};
 
-  encoder_context_->width = params.width;
-  encoder_context_->height = params.height;
+  encoder_context_->width = params_.width;
+  encoder_context_->height = params_.height;
   encoder_context_->gop_size = params.gop_size;
   encoder_context_->max_b_frames = 0;
   encoder_context_->pix_fmt = AV_PIX_FMT_YUV420P;
 
   // Settings to enable one-in-one-out
-  if (params.encoder_name == "libx264") {
+  if (params_.encoder_name == "libx264" || params_.encoder_name == "libx265") {
     // enable one-in-one-out
     av_opt_set(encoder_context_->priv_data, "tune", "zerolatency", 0);
     av_opt_set(encoder_context_->priv_data, "crf",
-               std::to_string(params.crf).c_str(), 0);
+               std::to_string(params_.crf).c_str(), 0);
 
-  } else if (params.encoder_name == "h264_nvenc") {
+  } else if (params_.encoder_name == "h264_nvenc") {
     // enable one-in-one-out
     av_opt_set(encoder_context_->priv_data, "zerolatency", "1", 0);
 
-    if (params.crf == 0) {
+    if (params_.crf == 0) {
       av_opt_set(encoder_context_->priv_data, "tune", "lossless", 0);
     } else {
       av_opt_set(encoder_context_->priv_data, "cq",
-                 std::to_string(params.crf).c_str(), 0);
+                 std::to_string(params_.crf).c_str(), 0);
     }
   }
 
@@ -112,6 +113,10 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
   // Use pts as index
   input_frame_->pts = pts_;
   pts_++;
+
+  if (params_.i_frame_only) {
+    input_frame_->pict_type = AV_PICTURE_TYPE_I;
+  }
 
   CHECK_LIBAV_ERROR(avcodec_send_frame(encoder_context_, input_frame_))
 

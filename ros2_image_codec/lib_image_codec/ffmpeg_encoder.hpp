@@ -34,6 +34,7 @@ class FFmpegEncoder : public IEncoder {
   int pts_ = 0;
 
   int cpu_max_align_;
+  EncoderParams params_;
 };
 
 }  // namespace image_codec

@@ -284,6 +284,7 @@ int main(int argc, char **argv) {
   // Main Image Encoding loop
   //
   int frame_idx = 0;
+  input_frame->pict_type = AV_PICTURE_TYPE_P;
   std::vector<cv::Mat> original_bgr_images;
   std::vector<std::vector<uint8_t>> encoded_packet_data;
 

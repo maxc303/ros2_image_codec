@@ -9,6 +9,7 @@ namespace image_codec {
 
 struct EncoderParams {
   std::string encoder_name;
+  bool i_frame_only = true;
   int gop_size;
   int width;
   int height;
