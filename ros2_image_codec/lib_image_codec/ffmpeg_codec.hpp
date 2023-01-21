@@ -45,7 +45,7 @@ class FFmpegDecoder : public IDecoder {
   FFmpegDecoder(FFmpegDecoder&&) = default;
   FFmpegDecoder& operator=(FFmpegDecoder&&) = default;
 
-  ~FFmpegDecoder(){};
+  ~FFmpegDecoder();
 
   ImageFrame decode(const Packet& packet) override;
 

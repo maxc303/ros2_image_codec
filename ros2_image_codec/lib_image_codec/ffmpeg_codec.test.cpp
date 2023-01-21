@@ -5,12 +5,13 @@
 #include <lib_image_codec/ffmpeg_codec.hpp>
 
 using image_codec::EncoderParams, image_codec::FFmpegEncoder,
-    image_codec::CodecException;
+    image_codec::CodecException, image_codec::DecoderParams,
+    image_codec::FFmpegDecoder;
 
 TEST_CASE("FFmpegEncoder", "[unit]") {
   EncoderParams params;
   params.height = 640;
-  params.width = 400;
+  params.width = 480;
   params.gop_size = 5;
 
   SECTION("Construct an Encoder") {
@@ -42,4 +43,28 @@ TEST_CASE("FFmpegEncoder", "[unit]") {
       CHECK(packet.is_key);
     }
   }
+}
+
+TEST_CASE("FFmpegDecoder", "[unit]") {
+  EncoderParams enc_params;
+  enc_params.height = 32;
+  enc_params.width = 32;
+  enc_params.gop_size = 5;
+  enc_params.encoder_name = "libx264";
+  std::vector<uint8_t> input_data(enc_params.height * enc_params.width * 3 / 2,
+                                  128);
+  FFmpegEncoder encoder(enc_params);
+  auto packet = encoder.encode(input_data.data(), input_data.size());
+
+  DecoderParams dec_params;
+  dec_params.decoder_name = "h264";
+  FFmpegDecoder decoder(dec_params);
+  image_codec::ImageFrame decoded_image = decoder.decode(packet);
+  std::cout << decoded_image.data.size() << std::endl;
+  CHECK(decoded_image.data.size() == input_data.size());
+  for (int i = 0; i < decoded_image.data.size(); i++) {
+    CAPTURE(i);
+    CHECK(decoded_image.data[i] == 128);
+  }
+  // CHECK(decoded_image.data == input_data);
 }

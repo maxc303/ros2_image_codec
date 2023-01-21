@@ -159,12 +159,12 @@ FFmpegDecoder::FFmpegDecoder(DecoderParams params)
   if (!input_packet_) {
     throw CodecException("Failed to allocate packet for decoder input.");
   }
-
   decoder_ = avcodec_find_decoder_by_name(params_.decoder_name.c_str());
   if (!decoder_) {
     throw CodecException("libavcodec Decoder '" + params_.decoder_name +
                          "' not found.");
   }
+
   parser_ = av_parser_init(decoder_->id);
   if (!parser_) {
     throw CodecException("Failed to init packet parser.");
@@ -173,12 +173,24 @@ FFmpegDecoder::FFmpegDecoder(DecoderParams params)
   // get the parsed data before the next frame arrives.
   parser_->flags |= PARSER_FLAG_COMPLETE_FRAMES;
 
+  decoder_context_ = avcodec_alloc_context3(decoder_);
+  if (!decoder_context_) {
+    throw CodecException("Failed to allocate decoder context.");
+  }
+
   CHECK_LIBAV_ERROR(avcodec_open2(decoder_context_, decoder_, NULL));
 
   output_frame_ = av_frame_alloc();
   if (!output_frame_) {
     throw CodecException("Failed to allocate buffer for decoder output.");
   }
+}
+
+FFmpegDecoder::~FFmpegDecoder() {
+  if (parser_) av_parser_close(parser_);
+  if (decoder_context_) avcodec_free_context(&decoder_context_);
+  if (output_frame_) av_frame_free(&output_frame_);
+  if (input_packet_) av_packet_free(&input_packet_);
 }
 
 ImageFrame FFmpegDecoder::decode(const Packet& packet) {
@@ -206,6 +218,24 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
     throw LibavException("Libav error during decoding: " +
                          av_err2string(receive_frame_return));
   }
+
+  ImageFrame output;
+  if (static_cast<AVPixelFormat>(output_frame_->format) ==
+      AVPixelFormat::AV_PIX_FMT_YUV420P) {
+    output.format = "yuv420p";
+  } else {
+    throw CodecException("Output frame format is not yuv420p");
+  }
+  int buffer_size = av_image_get_buffer_size(
+      static_cast<AVPixelFormat>(output_frame_->format), output_frame_->width,
+      output_frame_->height, 1);
+  output.data.resize(buffer_size);
+  av_image_copy_to_buffer(output.data.data(), buffer_size, output_frame_->data,
+                          output_frame_->linesize,
+                          static_cast<AVPixelFormat>(output_frame_->format),
+                          output_frame_->width, output_frame_->height, 1);
+
+  return output;
 }
 
 }  // namespace image_codec

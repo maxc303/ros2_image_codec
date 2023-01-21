@@ -531,7 +531,7 @@ int main(int argc, char **argv) {
       av_image_copy_to_buffer(image.data, image_data_size, decoded_frame->data,
                               decoded_frame->linesize,
                               static_cast<AVPixelFormat>(decoded_frame->format),
-                              decoded_frame->width, decoded_frame->height, 32);
+                              decoded_frame->width, decoded_frame->height, 1);
 
       auto t_4 = std::chrono::high_resolution_clock::now();
 
