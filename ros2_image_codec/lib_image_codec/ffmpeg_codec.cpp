@@ -6,23 +6,21 @@ extern "C" {
 
 #include <iostream>
 #include <lib_image_codec/exceptions.hpp>
-#include <lib_image_codec/ffmpeg_encoder.hpp>
+#include <lib_image_codec/ffmpeg_codec.hpp>
 namespace image_codec {
-
-void FFmpegEncoder::test() { std::cout << "test" << std::endl; }
 
 FFmpegEncoder::FFmpegEncoder(EncoderParams params)
     : params_(std::move(params)) {
   cpu_max_align_ = av_cpu_max_align();
   encoder_ = avcodec_find_encoder_by_name(params_.encoder_name.c_str());
   if (!encoder_) {
-    throw EncoderException("libavcodec Encoder '" + params_.encoder_name +
-                           "' not found.");
+    throw CodecException("libavcodec Encoder '" + params_.encoder_name +
+                         "' not found.");
   }
 
   encoder_context_ = avcodec_alloc_context3(encoder_);
   if (!encoder_context_) {
-    throw EncoderException("libavcodec Could not allocate encoder context.");
+    throw CodecException("libavcodec Could not allocate encoder context.");
   }
 
   encoder_context_->time_base = AVRational{1, 1};
@@ -55,7 +53,7 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params)
 
   output_packet_ = av_packet_alloc();
   if (!output_packet_) {
-    throw EncoderException(
+    throw CodecException(
         "libavcodec Could not allocate encoder output packet.");
   }
 
@@ -68,7 +66,7 @@ void FFmpegEncoder::init_input_frame() {
   int avcodec_return;
   input_frame_ = av_frame_alloc();
   if (!input_frame_) {
-    throw EncoderException("libavcodec Could not allocate input frame.");
+    throw CodecException("libavcodec Could not allocate input frame.");
   }
   input_frame_->format = encoder_context_->pix_fmt;
   input_frame_->width = encoder_context_->width;
@@ -89,7 +87,7 @@ void FFmpegEncoder::init_input_frame() {
 
 Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
   if (!input_data) {
-    throw EncoderException("Input data can't' be null.");
+    throw CodecException("Input data can't' be null.");
   }
   CHECK_LIBAV_ERROR(av_image_fill_arrays(
       input_frame_->data, input_frame_->linesize, input_data,
@@ -123,11 +121,11 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
   int receive_packet_return =
       avcodec_receive_packet(encoder_context_, output_packet_);
   if (receive_packet_return == AVERROR(EAGAIN)) {
-    throw EncoderException(
+    throw CodecException(
         "Could not receive a packet from one input frame. Check the encoder "
         "setting to ensure one-in-one-out.");
   } else if (receive_packet_return == AVERROR_EOF) {
-    throw EncoderException(
+    throw CodecException(
         "Receive Packet EOF. This should not happen during encoding.");
   } else if (receive_packet_return < 0) {
     throw LibavException("Libav error during encoding: " +
@@ -148,4 +146,66 @@ FFmpegEncoder::~FFmpegEncoder() {
   if (input_frame_) av_frame_free(&input_frame_);
   if (output_packet_) av_packet_free(&output_packet_);
 }
+
+//
+//
+// Decoder
+//
+//
+
+FFmpegDecoder::FFmpegDecoder(DecoderParams params)
+    : params_(std::move(params)) {
+  input_packet_ = av_packet_alloc();
+  if (!input_packet_) {
+    throw CodecException("Failed to allocate packet for decoder input.");
+  }
+
+  decoder_ = avcodec_find_decoder_by_name(params_.decoder_name.c_str());
+  if (!decoder_) {
+    throw CodecException("libavcodec Decoder '" + params_.decoder_name +
+                         "' not found.");
+  }
+  parser_ = av_parser_init(decoder_->id);
+  if (!parser_) {
+    throw CodecException("Failed to init packet parser.");
+  }
+  // The packet is known to be completed. Set the PARSER_FLAG_COMPLETE_FRAMES to
+  // get the parsed data before the next frame arrives.
+  parser_->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+
+  CHECK_LIBAV_ERROR(avcodec_open2(decoder_context_, decoder_, NULL));
+
+  output_frame_ = av_frame_alloc();
+  if (!output_frame_) {
+    throw CodecException("Failed to allocate buffer for decoder output.");
+  }
+}
+
+ImageFrame FFmpegDecoder::decode(const Packet& packet) {
+  // Parse packet data to av_packet
+  CHECK_LIBAV_ERROR(av_parser_parse2(parser_, decoder_context_,
+                                     &input_packet_->data, &input_packet_->size,
+                                     packet.data.data(), packet.data.size(),
+                                     AV_NOPTS_VALUE, AV_NOPTS_VALUE, 0))
+  if (!input_packet_->size) {
+    throw CodecException("Parsed incomplete packet");
+  }
+
+  CHECK_LIBAV_ERROR(avcodec_send_packet(decoder_context_, input_packet_))
+  int receive_frame_return =
+      avcodec_receive_frame(decoder_context_, output_frame_);
+
+  if (receive_frame_return == AVERROR(EAGAIN)) {
+    throw CodecException(
+        "Could not receive a frame from one input packet. Check the decoder "
+        "setting to ensure one-in-one-out.");
+  } else if (receive_frame_return == AVERROR_EOF) {
+    throw CodecException(
+        "Receive Frame EOF. This should not happen during encoding.");
+  } else if (receive_frame_return < 0) {
+    throw LibavException("Libav error during decoding: " +
+                         av_err2string(receive_frame_return));
+  }
+}
+
 }  // namespace image_codec

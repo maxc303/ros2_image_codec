@@ -36,9 +36,9 @@ class LibavException : public std::exception {
   std::string msg_;
 };
 
-class EncoderException : public std::exception {
+class CodecException : public std::exception {
  public:
-  explicit EncoderException(const std::string& msg) : msg_(msg) {}
+  explicit CodecException(const std::string& msg) : msg_(msg) {}
 
   const char* what() const noexcept override { return msg_.c_str(); }
 

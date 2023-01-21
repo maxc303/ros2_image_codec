@@ -2,10 +2,10 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 #include <lib_image_codec/exceptions.hpp>
-#include <lib_image_codec/ffmpeg_encoder.hpp>
+#include <lib_image_codec/ffmpeg_codec.hpp>
 
 using image_codec::EncoderParams, image_codec::FFmpegEncoder,
-    image_codec::EncoderException;
+    image_codec::CodecException;
 
 TEST_CASE("FFmpegEncoder", "[unit]") {
   EncoderParams params;
@@ -16,7 +16,7 @@ TEST_CASE("FFmpegEncoder", "[unit]") {
   SECTION("Construct an Encoder") {
     SECTION("Unknown decoder") {
       params.encoder_name = "not a decoder name";
-      CHECK_THROWS_AS(FFmpegEncoder(params), EncoderException);
+      CHECK_THROWS_AS(FFmpegEncoder(params), CodecException);
     }
 
     SECTION("Construct libx264 Encoder") {
@@ -30,7 +30,7 @@ TEST_CASE("FFmpegEncoder", "[unit]") {
     FFmpegEncoder encoder(params);
 
     SECTION("null input") {
-      CHECK_THROWS_AS(encoder.encode(nullptr, 0), EncoderException);
+      CHECK_THROWS_AS(encoder.encode(nullptr, 0), CodecException);
     }
     SECTION("Good input") {
       // Initialize a YUV data vector that all the value is 128.

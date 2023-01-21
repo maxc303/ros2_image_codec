@@ -16,6 +16,10 @@ struct EncoderParams {
   int crf = 23;
 };
 
+struct DecoderParams {
+  std::string decoder_name;
+};
+
 struct Packet {
   std::vector<uint8_t> data;
 
@@ -24,11 +28,22 @@ struct Packet {
   std::chrono::nanoseconds previous_frame_ts;
 };
 
+struct ImageFrame {
+  std::vector<uint8_t> data;
+  std::string format;
+};
+
 class IEncoder {
  public:
   virtual ~IEncoder() = default;
 
   virtual Packet encode(uint8_t* input_data, size_t data_size) = 0;
+};
+
+class IDecoder {
+ public:
+  virtual ~IDecoder() = default;
+  virtual ImageFrame decode(const Packet& packet) = 0;
 };
 
 }  // namespace image_codec

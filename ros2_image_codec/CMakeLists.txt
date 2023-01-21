@@ -18,7 +18,7 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavutil
 )
 
-add_library(image_codec lib_image_codec/ffmpeg_encoder.cpp)
+add_library(image_codec lib_image_codec/ffmpeg_codec.cpp)
 target_link_libraries(image_codec
   PkgConfig::LIBAV
   spdlog::spdlog
@@ -66,7 +66,7 @@ if(BUILD_TESTING)
 
 
   find_package(Catch2 REQUIRED)
-  add_executable(ffmpeg_encoder_test lib_image_codec/ffmpeg_encoder.test.cpp)
+  add_executable(ffmpeg_encoder_test lib_image_codec/ffmpeg_codec.test.cpp)
   target_link_libraries(ffmpeg_encoder_test PRIVATE Catch2::Catch2WithMain image_codec)
   # add_test(NAME ffmpeg_encoder_test COMMAND ffmpeg_encoder_test)
   ament_add_catch2_test(ffmpeg_encoder_test)

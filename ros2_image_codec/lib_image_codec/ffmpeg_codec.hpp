@@ -1,5 +1,5 @@
-#ifndef IMAGE_CODEC__FFMPEG_ENCODER_HPP
-#define IMAGE_CODEC__FFMPEG_ENCODER_HPP
+#ifndef IMAGE_CODEC__FFMPEG_CODEC_HPP
+#define IMAGE_CODEC__FFMPEG_CODEC_HPP
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -7,14 +7,13 @@ extern "C" {
 #include <libavutil/imgutils.h>
 }
 #include <chrono>
-#include <lib_image_codec/i_encoder.hpp>
+#include <lib_image_codec/i_codec.hpp>
 #include <string>
 #include <vector>
 namespace image_codec {
 
 class FFmpegEncoder : public IEncoder {
  public:
-  void test();
   FFmpegEncoder(EncoderParams params);
 
   FFmpegEncoder(const FFmpegEncoder&) = delete;
@@ -37,6 +36,27 @@ class FFmpegEncoder : public IEncoder {
   EncoderParams params_;
 };
 
+class FFmpegDecoder : public IDecoder {
+ public:
+  FFmpegDecoder(DecoderParams params);
+
+  FFmpegDecoder(const FFmpegDecoder&) = delete;
+  FFmpegDecoder& operator=(const FFmpegDecoder&) = delete;
+  FFmpegDecoder(FFmpegDecoder&&) = default;
+  FFmpegDecoder& operator=(FFmpegDecoder&&) = default;
+
+  ~FFmpegDecoder(){};
+
+  ImageFrame decode(const Packet& packet) override;
+
+ private:
+  DecoderParams params_;
+  const AVCodec* decoder_;
+  AVCodecParserContext* parser_;
+  AVCodecContext* decoder_context_;
+  AVPacket* input_packet_;
+  AVFrame* output_frame_;
+};
 }  // namespace image_codec
 
 #endif  // IMAGE_CODEC__FFMPEG_ENCODER_HPP
