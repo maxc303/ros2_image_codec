@@ -211,13 +211,20 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
   }
 
   CHECK_LIBAV_ERROR(avcodec_send_packet(decoder_context_, input_packet_))
+
   int receive_frame_return =
       avcodec_receive_frame(decoder_context_, output_frame_);
 
   if (receive_frame_return == AVERROR(EAGAIN)) {
-    throw CodecException(
-        "Could not receive a frame from one input packet. Check the decoder "
-        "setting to ensure one-in-one-out.");
+    CHECK_LIBAV_ERROR(avcodec_send_packet(decoder_context_, nullptr))
+    receive_frame_return =
+        avcodec_receive_frame(decoder_context_, output_frame_);
+    if (receive_frame_return == AVERROR(EAGAIN)) {
+      throw CodecException(
+          "Could not receive a frame from one input packet. Check the decoder "
+          "setting to ensure one-in-one-out.");
+    }
+    avcodec_flush_buffers(decoder_context_);
   } else if (receive_frame_return == AVERROR_EOF) {
     throw CodecException(
         "Receive Frame EOF. This should not happen during encoding.");
@@ -232,8 +239,11 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
       static_cast<AVPixelFormat>(output_frame_->format) ==
           AVPixelFormat::AV_PIX_FMT_YUVJ420P) {
     output.format = "yuv420p";
+  } else if (static_cast<AVPixelFormat>(output_frame_->format) ==
+             AVPixelFormat::AV_PIX_FMT_NV12) {
+    output.format = "nv12";
   } else {
-    throw CodecException("Output frame format is not yuv420p: " +
+    throw CodecException("Output frame format is not supported: " +
                          std::to_string(output_frame_->format));
   }
   int buffer_size = av_image_get_buffer_size(

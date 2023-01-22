@@ -58,21 +58,27 @@ void test_enc_dec(const std::string &encoder_name,
   std::vector<uint8_t> input_data(enc_params.height * enc_params.width * 3 / 2,
                                   128);
   FFmpegEncoder encoder(enc_params);
-  auto packet = encoder.encode(input_data.data(), input_data.size());
-
-  CHECK(packet.data.size() > 0);
-  CHECK(packet.data.size() < input_data.size());
 
   DecoderParams dec_params;
   dec_params.decoder_name = decoder_name;
   FFmpegDecoder decoder(dec_params);
-  image_codec::ImageFrame decoded_image = decoder.decode(packet);
-  CHECK(decoded_image.data.size() == input_data.size());
-  CHECK(decoded_image.data == input_data);
+
+  for (int i = 0; i < 5; i++) {
+    auto packet = encoder.encode(input_data.data(), input_data.size());
+
+    CHECK(packet.data.size() > 0);
+    CHECK(packet.data.size() < input_data.size());
+
+    image_codec::ImageFrame decoded_image = decoder.decode(packet);
+    CHECK(decoded_image.data.size() == input_data.size());
+    CHECK(decoded_image.data == input_data);
+  }
 }
 
 TEST_CASE("FFmpeg Encode and Decode", "[unit]") {
   SECTION("mjpeg + mjpeg") { test_enc_dec("mjpeg", "mjpeg"); }
+  SECTION("mjpeg + mjpeg_cuvid") { test_enc_dec("mjpeg", "mjpeg_cuvid"); }
   SECTION("libx264 + h264") { test_enc_dec("libx264", "h264"); }
+  SECTION("libx264 + h264_cuvid") { test_enc_dec("libx264", "h264_cuvid"); }
   SECTION("libx265 + h265") { test_enc_dec("libx265", "hevc"); }
 }
