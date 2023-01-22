@@ -30,6 +30,7 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params)
   encoder_context_->height = params_.height;
   encoder_context_->gop_size = params.gop_size;
   encoder_context_->max_b_frames = 0;
+
   encoder_context_->pix_fmt = AV_PIX_FMT_YUV420P;
 
   // Settings to enable one-in-one-out
@@ -49,6 +50,12 @@ FFmpegEncoder::FFmpegEncoder(EncoderParams params)
       av_opt_set(encoder_context_->priv_data, "cq",
                  std::to_string(params_.crf).c_str(), 0);
     }
+  } else if (params_.encoder_name == "mjpeg") {
+    encoder_context_->qmin = 1;
+    // mjpeg uses YUVJ420P, which has wider value range than YUV420P
+    encoder_context_->pix_fmt = AV_PIX_FMT_YUVJ420P;
+    encoder_context_->flags |= AV_CODEC_FLAG_QSCALE;
+    encoder_context_->global_quality = params_.qscale * FF_QP2LAMBDA;
   }
 
   output_packet_ = av_packet_alloc();
@@ -89,6 +96,8 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
   if (!input_data) {
     throw CodecException("Input data can't' be null.");
   }
+
+  // Note: Using a specific alignment may improve the performance.
   CHECK_LIBAV_ERROR(av_image_fill_arrays(
       input_frame_->data, input_frame_->linesize, input_data,
       static_cast<AVPixelFormat>(input_frame_->format), input_frame_->width,
@@ -219,10 +228,13 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
 
   ImageFrame output;
   if (static_cast<AVPixelFormat>(output_frame_->format) ==
-      AVPixelFormat::AV_PIX_FMT_YUV420P) {
+          AVPixelFormat::AV_PIX_FMT_YUV420P ||
+      static_cast<AVPixelFormat>(output_frame_->format) ==
+          AVPixelFormat::AV_PIX_FMT_YUVJ420P) {
     output.format = "yuv420p";
   } else {
-    throw CodecException("Output frame format is not yuv420p");
+    throw CodecException("Output frame format is not yuv420p: " +
+                         std::to_string(output_frame_->format));
   }
   int buffer_size = av_image_get_buffer_size(
       static_cast<AVPixelFormat>(output_frame_->format), output_frame_->width,

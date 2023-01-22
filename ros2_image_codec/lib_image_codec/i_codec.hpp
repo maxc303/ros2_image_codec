@@ -13,7 +13,9 @@ struct EncoderParams {
   int gop_size;
   int width;
   int height;
-  int crf = 23;
+  int crf = 23;    // FFmpeg libx264/libx265 quality factor [0-51]. Lower is
+                   // better
+  int qscale = 5;  // FFmpeg jpeg quality factor [1-31]. Lower is better
 };
 
 struct DecoderParams {
