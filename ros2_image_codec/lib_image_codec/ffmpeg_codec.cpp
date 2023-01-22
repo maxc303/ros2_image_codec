@@ -92,21 +92,19 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
   CHECK_LIBAV_ERROR(av_image_fill_arrays(
       input_frame_->data, input_frame_->linesize, input_data,
       static_cast<AVPixelFormat>(input_frame_->format), input_frame_->width,
-      input_frame_->height, cpu_max_align_))
+      input_frame_->height, 1))
 
   // // Use the input data as the buffer.
   // input_frame_->buf[0] =
   //     av_buffer_create(input_data, data_size, nullptr, nullptr, 0);
   // if (!input_frame_->buf[0]) {
-  //   throw LibavException("Failed to create frame buffer from input
-  //   data.");
+  //   throw LibavException("Failed to create frame buffer from input data.");
   // }
   // int padded_height = FFALIGN(input_frame_->height, 32);
   // // Fill data from buffer
   // CHECK_LIBAV_ERROR(av_image_fill_pointers(
-  //     input_frame_->data,
-  //     static_cast<AVPixelFormat>(input_frame_->format), padded_height,
-  //     input_frame_->buf[0]->data, input_frame_->linesize))
+  //     input_frame_->data, static_cast<AVPixelFormat>(input_frame_->format),
+  //     padded_height, input_frame_->buf[0]->data, input_frame_->linesize))
 
   // Use pts as index
   input_frame_->pts = pts_;
@@ -230,11 +228,11 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
       static_cast<AVPixelFormat>(output_frame_->format), output_frame_->width,
       output_frame_->height, 1);
   output.data.resize(buffer_size);
+
   av_image_copy_to_buffer(output.data.data(), buffer_size, output_frame_->data,
                           output_frame_->linesize,
                           static_cast<AVPixelFormat>(output_frame_->format),
                           output_frame_->width, output_frame_->height, 1);
-
   return output;
 }
 
