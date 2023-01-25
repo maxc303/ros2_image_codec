@@ -252,22 +252,19 @@ int main(int argc, char** argv) {
 
     // std::memcpy(img_iyuv.data, decoded_frame_data, decoded_frame_size);
 
+    // cuvid output format is nv12
     int y_ch_size = img_width * img_height;
-    int uv_ch_size = y_ch_size / 4;
-    std::vector<uint8_t> y_data(y_ch_size, 0);
-    std::vector<uint8_t> u_data(uv_ch_size, 0);
-    std::vector<uint8_t> v_data(uv_ch_size, 0);
+    int uv_ch_size = y_ch_size / 2;
 
     std::memcpy(img_iyuv.data, decoded_frame_data, y_ch_size);
     std::memcpy(img_iyuv.data + y_ch_size, decoded_frame_data + y_ch_size,
                 uv_ch_size);
-    std::memcpy(img_iyuv.data + y_ch_size + uv_ch_size,
-                decoded_frame_data + y_ch_size + uv_ch_size, uv_ch_size);
+
     spdlog::info("Frame idx {}, frame size = {}", pkt_idx,
                  decoder.GetFrameSize());
 
     cv::Mat image_bgr(img_height, img_width, CV_8UC3, 3);
-    cv::cvtColor(img_iyuv, image_bgr, cv::COLOR_YUV2BGR_I420);
+    cv::cvtColor(img_iyuv, image_bgr, cv::COLOR_YUV2BGR_NV12);
 
     auto mse = cv::quality::QualityMSE::compute(original_bgr_images[pkt_idx],
                                                 image_bgr, cv::noArray());
