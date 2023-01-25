@@ -93,9 +93,17 @@ static void decode(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt) {
     ret = avcodec_receive_frame(dec_ctx, frame);
 
     if (ret == AVERROR(EAGAIN)) {
-      spdlog::error(
-          "Error receiving frame from decoder. Output is not available in the "
-          "current state - user must try to send input.");
+      // AVPacket *dummy_packet;
+      // dummy_packet = av_packet_alloc();
+      // ret = avcodec_send_packet(dec_ctx, pkt);
+      ret = avcodec_receive_frame(dec_ctx, frame);
+      if (ret == AVERROR(EAGAIN)) {
+        spdlog::error(
+            "Error receiving frame from decoder. Output is not available in "
+            "the "
+            "current state - user must try to send input.");
+      }
+
       return;
     } else if (ret == AVERROR_EOF) {
       spdlog::warn("Receive frame EOF.");

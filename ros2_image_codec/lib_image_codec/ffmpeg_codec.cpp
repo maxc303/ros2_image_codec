@@ -79,17 +79,18 @@ void FFmpegEncoder::init_input_frame() {
   input_frame_->width = encoder_context_->width;
   input_frame_->height = encoder_context_->height;
 
-  CHECK_LIBAV_ERROR(av_frame_get_buffer(input_frame_, 0))
+  if (params_.use_input_as_buf) {
+    // Fill linesizes if the frame buffer is initialized on the input data.
+    CHECK_LIBAV_ERROR(
+        av_image_check_size(input_frame_->width, input_frame_->height, 0, NULL))
 
-  // // Fill linesizes if the frame buffer is initialized on the input data.
-  // CHECK_LIBAV_ERROR(
-  //     av_image_check_size(input_frame_->width, input_frame_->height, 0,
-  //     NULL))
-
-  // CHECK_LIBAV_ERROR(av_image_fill_linesizes(
-  //     input_frame_->linesize,
-  //     static_cast<AVPixelFormat>(input_frame_->format),
-  //     FFALIGN(input_frame_->width, cpu_max_align_)))
+    CHECK_LIBAV_ERROR(av_image_fill_linesizes(
+        input_frame_->linesize,
+        static_cast<AVPixelFormat>(input_frame_->format),
+        FFALIGN(input_frame_->width, 1)))
+  } else {
+    CHECK_LIBAV_ERROR(av_frame_get_buffer(input_frame_, 0))
+  }
 }
 
 Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
@@ -97,23 +98,28 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
     throw CodecException("Input data can't' be null.");
   }
 
-  // Note: Using a specific alignment may improve the performance.
-  CHECK_LIBAV_ERROR(av_image_fill_arrays(
-      input_frame_->data, input_frame_->linesize, input_data,
-      static_cast<AVPixelFormat>(input_frame_->format), input_frame_->width,
-      input_frame_->height, 1))
+  if (params_.use_input_as_buf) {
+    // Use the input data as the buffer.
+    input_frame_->buf[0] =
+        av_buffer_create(input_data, data_size, nullptr, nullptr, 0);
+    if (!input_frame_->buf[0]) {
+      throw LibavException("Failed to create frame buffer from input data.");
+    }
+    // // int padded_height = FFALIGN(input_frame_->height, 32);
+    // Fill data from buffer
+    CHECK_LIBAV_ERROR(av_image_fill_pointers(
+        input_frame_->data, static_cast<AVPixelFormat>(input_frame_->format),
+        input_frame_->height, input_frame_->buf[0]->data,
+        input_frame_->linesize))
 
-  // // Use the input data as the buffer.
-  // input_frame_->buf[0] =
-  //     av_buffer_create(input_data, data_size, nullptr, nullptr, 0);
-  // if (!input_frame_->buf[0]) {
-  //   throw LibavException("Failed to create frame buffer from input data.");
-  // }
-  // int padded_height = FFALIGN(input_frame_->height, 32);
-  // // Fill data from buffer
-  // CHECK_LIBAV_ERROR(av_image_fill_pointers(
-  //     input_frame_->data, static_cast<AVPixelFormat>(input_frame_->format),
-  //     padded_height, input_frame_->buf[0]->data, input_frame_->linesize))
+  } else {
+    // Copy data from input to image buffer
+    // Note: Using a specific alignment may improve the performance.
+    CHECK_LIBAV_ERROR(av_image_fill_arrays(
+        input_frame_->data, input_frame_->linesize, input_data,
+        static_cast<AVPixelFormat>(input_frame_->format), input_frame_->width,
+        input_frame_->height, 1))
+  }
 
   // Use pts as index
   input_frame_->pts = pts_;
@@ -150,7 +156,9 @@ Packet FFmpegEncoder::encode(uint8_t* input_data, size_t data_size) {
 
 FFmpegEncoder::~FFmpegEncoder() {
   if (encoder_context_) avcodec_free_context(&encoder_context_);
-  if (input_frame_) av_frame_free(&input_frame_);
+  // When the input data is used as buffer, the memery should not be free by the
+  // frame.
+  if (input_frame_ && !params_.use_input_as_buf) av_frame_free(&input_frame_);
   if (output_packet_) av_packet_free(&output_packet_);
 }
 
@@ -216,7 +224,12 @@ ImageFrame FFmpegDecoder::decode(const Packet& packet) {
       avcodec_receive_frame(decoder_context_, output_frame_);
 
   if (receive_frame_return == AVERROR(EAGAIN)) {
+    // A work around for *_cuvid decoders to achieve one-in-one-out.
+    // The way to set cuvid packet flag CUVID_PKT_ENDOFPICTURE from libav is not
+    // found yet.
+    // Flushing is slow.
     CHECK_LIBAV_ERROR(avcodec_send_packet(decoder_context_, nullptr))
+
     receive_frame_return =
         avcodec_receive_frame(decoder_context_, output_frame_);
     if (receive_frame_return == AVERROR(EAGAIN)) {
