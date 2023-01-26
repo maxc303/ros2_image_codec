@@ -1,12 +1,10 @@
 extern "C" {
 #include <libavutil/opt.h>
 }
-
-#include <spdlog/spdlog.h>
-
+#include <cstring>
 #include <iostream>
 #include <lib_image_codec/exceptions.hpp>
-#include <lib_image_codec/ffmpeg_codec.hpp>
+#include <lib_image_codec/ffmpeg_codec/ffmpeg_codec.hpp>
 namespace image_codec {
 
 FFmpegEncoder::FFmpegEncoder(EncoderParams params)

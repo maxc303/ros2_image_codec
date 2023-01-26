@@ -2,7 +2,7 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 #include <lib_image_codec/exceptions.hpp>
-#include <lib_image_codec/ffmpeg_codec.hpp>
+#include <lib_image_codec/ffmpeg_codec/ffmpeg_codec.hpp>
 
 using image_codec::EncoderParams, image_codec::FFmpegEncoder,
     image_codec::CodecException, image_codec::DecoderParams,

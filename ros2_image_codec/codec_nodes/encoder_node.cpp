@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <iostream>
-#include <lib_image_codec/ffmpeg_codec.hpp>
+#include <lib_image_codec/ffmpeg_codec/ffmpeg_codec.hpp>
+#include <lib_image_codec/nv_codec/nv_codec.hpp>
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
