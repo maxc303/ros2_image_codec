@@ -17,13 +17,14 @@ class NvImageDecoder : public IDecoder {
   NvImageDecoder(NvImageDecoder&&) = default;
   NvImageDecoder& operator=(NvImageDecoder&&) = default;
 
-  ~NvImageDecoder();
+  ~NvImageDecoder() = default;
 
   ImageFrame decode(const Packet& packet) override;
 
  private:
-  CUcontext cuContext = NULL;
+  CUcontext cuContext_ = NULL;
   std::unique_ptr<NvDecoder> decoder_;
+  DecoderParams params_;
 };
 }  // namespace image_codec
 
