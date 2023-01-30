@@ -14,8 +14,9 @@ NvImageDecoder::NvImageDecoder(DecoderParams params)
 
   ck(cuCtxCreate(&cuContext_, 0, cuDevice));
   cudaVideoCodec codec;
-  decoder_ = std::make_unique<NvDecoder>(cuContext_, false, codec, true, false,
-                                         NULL, NULL, false, 0, 0, 1000, true);
+  decoder_ =
+      std::make_unique<NvDecoder>(cuContext_, false, codec, true, false,
+                                  nullptr, nullptr, false, 0, 0, 1000, true);
 }
 
 ImageFrame NvImageDecoder::decode(const Packet& packet) {
@@ -31,5 +32,14 @@ ImageFrame NvImageDecoder::decode(const Packet& packet) {
   int64_t timestamp;
   auto decoded_frame_data = decoder_->GetFrame(&timestamp);
   auto decoded_frame_size = decoder_->GetFrameSize();
+
+  auto output_format = decoder_->GetOutputFormat();
+
+  // support yuv420 only
+  if (output_format != cudaVideoSurfaceFormat_NV12) {
+    throw CodecException("Decoded image format is not NV12: " +
+                         static_cast<int>(output_format));
+  }
+  return ImageFrame();
 }
 }  // namespace image_codec

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <lib_image_codec/ffmpeg_codec/ffmpeg_codec.hpp>
 #include <lib_image_codec/nv_codec/nv_codec.hpp>
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -33,6 +34,9 @@ int main(int argc, char** argv) {
   dec_params.decoder_name = "h264";
   image_codec::FFmpegDecoder decoder(dec_params);
   image_codec::ImageFrame decoded_image = decoder.decode(packet);
+
+  image_codec::NvImageDecoder nv_decoder(dec_params);
+  auto nv_decodecd_image = nv_decoder.decode(packet);
   std::cout << decoded_image.data.size() << std::endl;
   return 0;
 }

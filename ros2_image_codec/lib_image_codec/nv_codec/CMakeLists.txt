@@ -52,9 +52,6 @@ set_target_properties(nv_codec PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 target_compile_options(nv_codec PRIVATE -Wall -Wextra)
 
 
-target_include_directories(nv_codec PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../>
-  $<INSTALL_INTERFACE:include>)
 
 # Add SYSTEM to suppress warning
 target_include_directories(nv_codec SYSTEM PUBLIC ${CUDA_INCLUDE_DIRS}
@@ -64,3 +61,36 @@ target_include_directories(nv_codec SYSTEM PUBLIC ${CUDA_INCLUDE_DIRS}
 )
 
 target_link_libraries(nv_codec  ${CUDA_CUDA_LIBRARY} ${CMAKE_DL_LIBS} ${NVENCODEAPI_LIB} ${CUVID_LIB})
+
+# add_library(nv_codec nv_codec.cpp)
+# target_link_libraries(nv_codec PUBLIC
+#   nv_video_codec
+# )
+
+target_include_directories(nv_codec PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../>
+  $<INSTALL_INTERFACE:include>)
+
+
+# if(BUILD_TESTING)
+#   find_package(ament_cmake_catch2 REQUIRED)
+#   find_package(ament_lint_auto REQUIRED)
+#   # the following line skips the linter which checks for copyrights
+#   # comment the line when a copyright and license is added to all source files
+#   set(ament_cmake_copyright_FOUND TRUE)
+#   # the following line skips cpplint (only works in a git repo)
+#   # comment the line when this package is in a git repo and when
+#   # a copyright and license is added to all source files
+#   set(ament_cmake_cpplint_FOUND TRUE)
+
+#   # Disable uncrustify
+#   set(ament_cmake_uncrustify_FOUND TRUE)
+#   ament_lint_auto_find_test_dependencies()
+
+
+#   find_package(Catch2 REQUIRED)
+#   add_executable(nv_codec_test nv_codec.test.cpp)
+#   target_link_libraries(nv_codec_test  nv_video_codec nv_codec Catch2::Catch2WithMain)
+#   ament_add_catch2_test(nv_codec_test)
+
+# endif()

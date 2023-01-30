@@ -10,7 +10,7 @@ namespace image_codec {
 
 class NvImageDecoder : public IDecoder {
  public:
-  NvImageDecoder(DecoderParams params){};
+  NvImageDecoder(DecoderParams params);
 
   NvImageDecoder(const NvImageDecoder&) = delete;
   NvImageDecoder& operator=(const NvImageDecoder&) = delete;
