@@ -6,6 +6,7 @@
 #include "NvDecoder/NvDecoder.h"
 #include "NvEncoder/NvEncoderCuda.h"
 #include "NvEncoderCLIOptions.h"
+
 namespace image_codec {
 
 class NvImageDecoder : public IDecoder {

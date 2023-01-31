@@ -1,11 +1,16 @@
 #include <lib_image_codec/exceptions.hpp>
 #include <lib_image_codec/nv_codec/nv_codec.hpp>
+
+// Definition of logger for NvDecoderUtil
+simplelogger::Logger* logger =
+    simplelogger::LoggerFactory::CreateConsoleLogger();
+
 namespace image_codec {
 
 NvImageDecoder::NvImageDecoder(DecoderParams params)
     : params_(std::move(params)) {
   int iGpu = 0;
-
+  ck(cuInit(0));
   CUdevice cuDevice = 0;
   char szDeviceName[80];
   ck(cuDeviceGetName(szDeviceName, sizeof(szDeviceName), cuDevice));
