@@ -38,5 +38,6 @@ int main(int argc, char** argv) {
   image_codec::NvImageDecoder nv_decoder(dec_params);
   auto nv_decodecd_image = nv_decoder.decode(packet);
   std::cout << decoded_image.data.size() << std::endl;
+
   return 0;
 }

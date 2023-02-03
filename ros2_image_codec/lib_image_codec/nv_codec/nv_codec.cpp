@@ -18,7 +18,7 @@ NvImageDecoder::NvImageDecoder(DecoderParams params)
   ck(cuDeviceGet(&cuDevice, iGpu));
 
   ck(cuCtxCreate(&cuContext_, 0, cuDevice));
-  cudaVideoCodec codec;
+  cudaVideoCodec codec = cudaVideoCodec_H264;
   decoder_ =
       std::make_unique<NvDecoder>(cuContext_, false, codec, true, false,
                                   nullptr, nullptr, false, 0, 0, 1000, true);
