@@ -3,3 +3,4 @@ log*
 install*
 .vscode/
 output_images/
+test_images/
