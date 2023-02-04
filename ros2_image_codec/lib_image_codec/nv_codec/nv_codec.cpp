@@ -18,7 +18,14 @@ NvImageDecoder::NvImageDecoder(DecoderParams params)
   ck(cuDeviceGet(&cuDevice, iGpu));
 
   ck(cuCtxCreate(&cuContext_, 0, cuDevice));
-  cudaVideoCodec codec = cudaVideoCodec_H264;
+  cudaVideoCodec codec;
+  if (params_.decoder_name == "h264") {
+    codec = cudaVideoCodec_H264;
+  } else {
+    throw CodecException("Codec is currently not supported: " +
+                         params_.decoder_name);
+  }
+
   decoder_ =
       std::make_unique<NvDecoder>(cuContext_, false, codec, true, false,
                                   nullptr, nullptr, false, 0, 0, 1000, true);
@@ -40,11 +47,18 @@ ImageFrame NvImageDecoder::decode(const Packet& packet) {
 
   auto output_format = decoder_->GetOutputFormat();
 
-  // support yuv420 only
+  // support yuv420_nv12 only
   if (output_format != cudaVideoSurfaceFormat_NV12) {
-    throw CodecException("Decoded image format is not NV12: " +
+    throw CodecException("Decoded image format is not NV12(0): " +
                          static_cast<int>(output_format));
   }
-  return ImageFrame();
+
+  ImageFrame output;
+  output.format = "nv12";
+  output.data.resize(decoded_frame_size);
+
+  std::memcpy(output.data.data(), decoded_frame_data, decoded_frame_size);
+
+  return output;
 }
 }  // namespace image_codec
